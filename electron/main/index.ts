@@ -20,7 +20,6 @@ app.disableHardwareAcceleration();
 const createWindow = () => {
   // Create the browser window.
   mainWindow = new BrowserWindow({
-    fullscreen: true,
     resizable: true,
     title: 'Trafexia - Mobile Traffic Interceptor',
     icon: join(__dirname, '../resources/icons/icon.png'),

@@ -18,6 +18,7 @@ export class ProxyServer extends EventEmitter {
   private config: ProxyConfig | null = null;
   private running = false;
   private certCache: Map<string, { key: string; cert: string }> = new Map();
+  private activeSockets: Set<net.Socket | tls.TLSSocket> = new Set();
 
   constructor(certManager: CertificateManager, storage: TrafficStorage) {
     super();
@@ -53,6 +54,14 @@ export class ProxyServer extends EventEmitter {
         }
       });
 
+      // Track connections for clean shutdown
+      this.server.on('connection', (socket: net.Socket) => {
+        this.activeSockets.add(socket);
+        socket.on('close', () => {
+          this.activeSockets.delete(socket);
+        });
+      });
+
       this.server.listen(config.port, '0.0.0.0', () => {
         this.running = true;
         console.log(`[ProxyServer] Started on port ${config.port}`);
@@ -65,16 +74,35 @@ export class ProxyServer extends EventEmitter {
    * Stop the proxy server
    */
   async stop(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      if (!this.server || !this.running) {
-        resolve();
-        return;
-      }
+    if (!this.server || !this.running) {
+      return;
+    }
 
-      this.server.close((err) => {
+    console.log(`[ProxyServer] Stopping... (${this.activeSockets.size} active connections)`);
+
+    // Destroy all active connections immediately
+    for (const socket of this.activeSockets) {
+      try {
+        socket.destroy();
+      } catch {
+        // Ignore errors when destroying sockets
+      }
+    }
+    this.activeSockets.clear();
+
+    // Close server with timeout
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        console.log('[ProxyServer] Force stopped (timeout)');
+        this.running = false;
+        this.server = null;
+        resolve();
+      }, 2000); // 2 second timeout
+
+      this.server!.close((err) => {
+        clearTimeout(timeout);
         if (err) {
-          reject(err);
-          return;
+          console.error('[ProxyServer] Error closing server:', err);
         }
         this.running = false;
         this.server = null;
@@ -206,6 +234,10 @@ export class ProxyServer extends EventEmitter {
         clientSocket.pipe(serverSocket);
       });
 
+      // Track server socket for clean shutdown
+      this.activeSockets.add(serverSocket);
+      serverSocket.on('close', () => this.activeSockets.delete(serverSocket));
+
       serverSocket.on('error', () => {
         clientSocket.end('HTTP/1.1 502 Bad Gateway\r\n\r\n');
       });
@@ -275,6 +307,10 @@ export class ProxyServer extends EventEmitter {
       // Force HTTP/1.1 to avoid H2 binary framing issues since we don't have H2 parser
       ALPNProtocols: ['http/1.1'],
     });
+
+    // Track TLS socket for clean shutdown
+    this.activeSockets.add(tlsSocket);
+    tlsSocket.on('close', () => this.activeSockets.delete(tlsSocket));
 
     tlsSocket.on('error', (err) => {
       // Suppress common errors for apps with cert pinning or unsupported protocols
