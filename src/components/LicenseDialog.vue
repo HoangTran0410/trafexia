@@ -59,6 +59,12 @@ function close() {
 function openPurchase() {
   window.open('https://trafexia.dev/pricing', '_blank');
 }
+
+async function deactivate() {
+  await licenseStore.deactivateLicense();
+  toast.add({ severity: 'info', summary: 'License Deactivated', detail: 'Reverted to Free tier', life: 3000 });
+  close();
+}
 </script>
 
 <template>
@@ -72,11 +78,24 @@ function openPurchase() {
 
           <div v-if="activePanel === 'pricing'" class="pricing-panel">
             <div class="header">
-              <h2>Select your protocol</h2>
-              <p>Choose the tier that fits your debugging requirements.</p>
+              <h2 v-if="licenseStore.isPro">You're on Pro</h2>
+              <h2 v-else>Select your protocol</h2>
+              <p v-if="licenseStore.isPro">All professional features are unlocked.</p>
+              <p v-else>Choose the tier that fits your debugging requirements.</p>
             </div>
 
-            <div class="tier-grid">
+            <!-- Show Pro status if already active -->
+            <div v-if="licenseStore.isPro" class="pro-active-card">
+              <Crown :size="36" class="pro-crown" />
+              <h3>Professional License Active</h3>
+              <p v-if="licenseStore.daysRemaining !== null" class="days-info">{{ licenseStore.daysRemaining }} days remaining</p>
+              <p v-if="licenseStore.license.email" class="email-info">{{ licenseStore.license.email }}</p>
+              <div class="divider"></div>
+              <button class="tier-btn deactivate" @click="deactivate">Deactivate License</button>
+            </div>
+
+            <!-- Show tier comparison for free users -->
+            <div v-else class="tier-grid">
               <!-- Free Tier -->
               <div class="tier-card free">
                 <div class="tier-header">
@@ -117,7 +136,7 @@ function openPurchase() {
               </div>
             </div>
 
-            <div class="footer">
+            <div class="footer" v-if="!licenseStore.isPro">
               <p>Already have a license? <button class="link-btn" @click="activePanel = 'activate'">Activate here</button></p>
             </div>
           </div>
@@ -176,12 +195,13 @@ function openPurchase() {
 .pricing-container {
   width: 100%;
   max-width: 720px;
+  max-height: 95vh;
   background: #0B1120;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 16px;
   position: relative;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 .close-btn {
@@ -341,12 +361,140 @@ function openPurchase() {
   color: #64748B;
 }
 
+/* Pro Active Card */
+.pro-active-card {
+  text-align: center;
+  padding: 48px 40px 40px;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.06), rgba(99, 102, 241, 0.04));
+  border: 1px solid rgba(56, 189, 248, 0.12);
+  border-radius: 16px;
+  position: relative;
+  overflow: hidden;
+}
+
+.pro-active-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #38BDF8, transparent);
+}
+
+.pro-active-card .pro-crown {
+  color: #38BDF8;
+  margin: 0 auto 20px;
+  display: block;
+  filter: drop-shadow(0 0 12px rgba(56, 189, 248, 0.4));
+  animation: crownPulse 3s ease-in-out infinite;
+}
+
+@keyframes crownPulse {
+  0%, 100% { filter: drop-shadow(0 0 12px rgba(56, 189, 248, 0.3)); }
+  50% { filter: drop-shadow(0 0 20px rgba(56, 189, 248, 0.6)); }
+}
+
+.pro-active-card h3 {
+  font-size: 22px;
+  font-weight: 700;
+  color: #F1F5F9;
+  margin-bottom: 16px;
+  letter-spacing: -0.3px;
+}
+
+.pro-active-card .days-info {
+  font-size: 14px;
+  color: #38BDF8;
+  font-weight: 600;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.pro-active-card .days-info::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background: #10B981;
+  border-radius: 50%;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+}
+
+.pro-active-card .email-info {
+  font-size: 12px;
+  color: #64748B;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.3px;
+}
+
+.pro-active-card .divider {
+  width: 60px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 28px auto 24px;
+}
+
+.tier-btn.deactivate {
+  margin-top: 0;
+  background: transparent;
+  color: #64748B;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 20px;
+  height: 36px;
+}
+
+.tier-btn.deactivate:hover {
+  background: rgba(239, 68, 68, 0.08);
+  color: #EF4444;
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
 .link-btn {
   background: none;
   border: none;
   color: #38BDF8;
   font-weight: 600;
   cursor: pointer;
+}
+
+/* Responsive Overrides */
+@media (max-width: 768px) {
+  .pricing-panel {
+    padding: 32px 24px;
+  }
+  
+  .header h2 {
+    font-size: 24px;
+  }
+  
+  .tier-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  
+  .tier-card {
+    padding: 24px;
+  }
+}
+
+@media (max-height: 700px) {
+  .pricing-panel {
+    padding: 24px;
+  }
+  
+  .header {
+    margin-bottom: 24px;
+  }
+  
+  .features-list {
+    margin-bottom: 20px;
+  }
 }
 
 /* Activate Panel */

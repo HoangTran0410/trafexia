@@ -36,6 +36,8 @@ const createWindow = () => {
     resizable: true,
     title: 'Trafexia - Mobile Traffic Interceptor',
     icon: join(__dirname, '../resources/icons/icon.png'),
+    minWidth: 1024,
+    minHeight: 700,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
@@ -48,9 +50,14 @@ const createWindow = () => {
     show: false,
   });
 
-  // Show window when ready
+  // Show window maximized when ready
   mainWindow.once('ready-to-show', () => {
+    mainWindow?.maximize();
     mainWindow?.show();
+
+    // Lock zoom level to 100% — prevent Ctrl+/- zoom that breaks layout
+    mainWindow?.webContents.setZoomFactor(1.0);
+    mainWindow?.webContents.setZoomLevel(0);
 
     // Register breakpoint events after renderer is fully ready
     // Prevents mainWindow.webContents.send from firing too early
@@ -59,6 +66,13 @@ const createWindow = () => {
         mainWindow.webContents.send('breakpoint:request-pending', intercepted);
       };
     });
+  });
+
+  // Prevent zoom via keyboard shortcuts (Cmd+/Cmd- on Mac, Ctrl+/Ctrl- on Windows)
+  mainWindow.webContents.on('before-input-event', (_event, input) => {
+    if ((input.control || input.meta) && (input.key === '+' || input.key === '-' || input.key === '=')) {
+      _event.preventDefault();
+    }
   });
 
   // Open external links in browser
@@ -123,8 +137,8 @@ const initializeServices = async () => {
     mainWindow: () => mainWindow,
   });
 
-  // Setup SSL bypass IPC handlers
-  setupSslBypassIpc(() => mainWindow);
+  // Setup SSL bypass IPC handlers (with license enforcement)
+  setupSslBypassIpc(() => mainWindow, licenseService);
 
   console.log('[Main] Services initialized');
 };

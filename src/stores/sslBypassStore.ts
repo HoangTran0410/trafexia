@@ -7,6 +7,7 @@ import type {
   BypassFramework,
   FridaArch,
 } from "@shared/types";
+import { handleFeatureLockError } from "@/utils/featureLock";
 
 export const useSslBypassStore = defineStore("sslBypass", () => {
   // State
@@ -35,13 +36,12 @@ export const useSslBypassStore = defineStore("sslBypass", () => {
       patchLog.value = result;
       return result;
     } catch (error) {
+      if (handleFeatureLockError(error)) {
+        // Feature locked — upgrade dialog shown, return empty result
+        return { success: false, patchedItems: [], warnings: ['PRO license required'], outputPath: '' };
+      }
       const msg = error instanceof Error ? error.message : String(error);
-      const failResult: PatchResult = {
-        success: false,
-        patchedItems: [],
-        warnings: [msg],
-        outputPath: "",
-      };
+      const failResult: PatchResult = { success: false, patchedItems: [], warnings: [msg], outputPath: '' };
       patchLog.value = failResult;
       return failResult;
     } finally {
@@ -74,7 +74,9 @@ export const useSslBypassStore = defineStore("sslBypass", () => {
       fridaRunning.value = true;
     } catch (error) {
       fridaRunning.value = false;
-      throw error;
+      if (!handleFeatureLockError(error)) {
+        throw error; // Re-throw non-lock errors
+      }
     }
   }
 

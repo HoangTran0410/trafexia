@@ -18,6 +18,7 @@ import {
 
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useProxyStore } from '@/stores/proxyStore';
+import { useLicenseStore } from '@/stores/licenseStore';
 
 const props = defineProps<{
   visible: boolean;
@@ -30,6 +31,7 @@ const emit = defineEmits<{
 const toast = useToast();
 const settingsStore = useSettingsStore();
 const proxyStore = useProxyStore();
+const licenseStore = useLicenseStore();
 
 // Local settings copy
 const localSettings = ref({ ...settingsStore.settings });
@@ -198,16 +200,18 @@ async function copyAdbClearCommand() {
         </h4>
 
         <div class="grid grid-cols-2 gap-4">
-          <button class="action-card" @click="exportAllRequests('har')">
+          <button class="action-card" :class="{ 'feature-locked': !licenseStore.hasFeature('export-har') }" @click="licenseStore.guardFeature('export-har') && exportAllRequests('har')">
             <FileDown class="w-5 h-5 mb-2 text-blue-400" />
             <span class="font-medium">Export HAR</span>
             <span class="text-xs text-center text-[#8b949e]">Standard HTTP Archive format</span>
+            <span v-if="!licenseStore.hasFeature('export-har')" class="lock-badge">PRO</span>
           </button>
 
-          <button class="action-card" @click="exportAllRequests('json')">
+          <button class="action-card" :class="{ 'feature-locked': !licenseStore.hasFeature('export-har') }" @click="licenseStore.guardFeature('export-har') && exportAllRequests('json')">
             <FileDown class="w-5 h-5 mb-2 text-green-400" />
             <span class="font-medium">Export JSON</span>
             <span class="text-xs text-center text-[#8b949e]">Raw request data</span>
+            <span v-if="!licenseStore.hasFeature('export-har')" class="lock-badge">PRO</span>
           </button>
         </div>
       </section>
@@ -405,6 +409,32 @@ section h4 {
 .action-card-sm svg {
   width: 20px !important;
   height: 20px !important;
+}
+
+/* Feature lock styles */
+.action-card.feature-locked {
+  opacity: 0.5;
+  cursor: not-allowed;
+  position: relative;
+}
+
+.action-card.feature-locked:hover {
+  background: #21262d;
+  border-color: #30363d;
+}
+
+.lock-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: #38BDF8;
+  background: rgba(56, 189, 248, 0.15);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(56, 189, 248, 0.3);
 }
 
 /* Deep/Global overrides for PrimeVue inside this component */

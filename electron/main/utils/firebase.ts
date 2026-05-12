@@ -1,6 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore/lite";
 
 // Consistent config with Admin app
 const firebaseConfig = {
@@ -14,6 +13,7 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+
+// Use lite SDK — REST only, no gRPC (gRPC fails in Electron main process)
 export const db = getFirestore(app);
-export const auth = getAuth(app);
 export default app;

@@ -202,12 +202,21 @@ export class ProxyServer extends EventEmitter {
     // Remove proxy-specific headers
     delete (options.headers as Record<string, unknown>)['proxy-connection'];
 
-    // Capture request
+    // Capture request with size limit to maintain smoothness
     const requestBody: Buffer[] = [];
-    clientReq.on('data', (chunk) => requestBody.push(chunk));
+    let requestSize = 0;
+    const MAX_BUFFER_SIZE = 5 * 1024 * 1024; // 5MB limit for capturing
+
+    clientReq.on('data', (chunk) => {
+      if (requestSize + chunk.length < MAX_BUFFER_SIZE) {
+        requestBody.push(chunk);
+        requestSize += chunk.length;
+      }
+    });
 
     clientReq.on('end', async () => {
-      const reqBodyStr = Buffer.concat(requestBody).toString('utf-8');
+      const fullBody = Buffer.concat(requestBody);
+      const reqBodyStr = requestSize < MAX_BUFFER_SIZE ? fullBody.toString('utf-8') : '[Request body too large to capture]';
 
       // Check for mock rules first
       if (this.mockService) {
@@ -350,10 +359,11 @@ export class ProxyServer extends EventEmitter {
       };
 
       const requestId = this.storage.saveRequest(capturedRequest);
+      this.emit('request', { ...capturedRequest, id: requestId });
 
       // Make proxy request
       const proxyReq = http.request(options, (proxyRes) => {
-        this.handleProxyResponse(requestId, startTime, proxyRes, clientRes);
+        this.handleProxyResponse(requestId, startTime, proxyRes, clientRes, requestUrl);
       });
 
       proxyReq.on('error', (err) => {
@@ -374,10 +384,20 @@ export class ProxyServer extends EventEmitter {
       });
 
       // Forward request body
-      if (reqBodyStr) {
-        proxyReq.write(reqBodyStr);
+      if (requestBody.length > 0) {
+        const fullBody = Buffer.concat(requestBody);
+        const uploadThrottle = this.throttleService?.createThrottleStream('upload', requestUrl);
+        if (uploadThrottle) {
+          uploadThrottle.pipe(proxyReq);
+          uploadThrottle.write(fullBody);
+          uploadThrottle.end();
+        } else {
+          proxyReq.write(fullBody);
+          proxyReq.end();
+        }
+      } else {
+        proxyReq.end();
       }
-      proxyReq.end();
     });
   }
 
@@ -393,8 +413,22 @@ export class ProxyServer extends EventEmitter {
       const serverSocket = net.connect(port, hostname, () => {
         clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
         serverSocket.write(head);
-        serverSocket.pipe(clientSocket);
-        clientSocket.pipe(serverSocket);
+        
+        const fullUrl = `https://${hostname}:${port}`;
+        const downloadThrottle = this.throttleService?.createThrottleStream('download', fullUrl);
+        const uploadThrottle = this.throttleService?.createThrottleStream('upload', fullUrl);
+
+        if (downloadThrottle) {
+          serverSocket.pipe(downloadThrottle).pipe(clientSocket);
+        } else {
+          serverSocket.pipe(clientSocket);
+        }
+
+        if (uploadThrottle) {
+          clientSocket.pipe(uploadThrottle).pipe(serverSocket);
+        } else {
+          clientSocket.pipe(serverSocket);
+        }
       });
 
       // Track server socket for clean shutdown
@@ -770,14 +804,6 @@ export class ProxyServer extends EventEmitter {
           return;
         }
 
-        // Apply throttle delay if enabled
-        if (this.throttleService?.isEnabled() && this.throttleService.shouldThrottle(fullUrl)) {
-          const delay = this.throttleService.calculateDelay(originalBodyBuffer.length, 'download');
-          if (delay > 0) {
-            await new Promise(resolve => setTimeout(resolve, delay));
-          }
-        }
-
         let responseHead = `HTTP/1.1 ${proxyRes.statusCode} ${proxyRes.statusMessage || ''}\r\n`;
         for (const [key, value] of Object.entries(proxyRes.headers)) {
           // Skip Transfer-Encoding header as we're sending complete body
@@ -794,7 +820,17 @@ export class ProxyServer extends EventEmitter {
 
         try {
           clientSocket.write(responseHead);
-          clientSocket.write(originalBodyBuffer);
+          
+          // Apply throttle stream if enabled
+          const throttleStream = this.throttleService?.createThrottleStream('download', fullUrl);
+          if (throttleStream) {
+            // Write body through throttle stream
+            throttleStream.pipe(clientSocket);
+            throttleStream.write(originalBodyBuffer);
+            throttleStream.end();
+          } else {
+            clientSocket.write(originalBodyBuffer);
+          }
         } catch (err) {
           console.error('[ProxyServer] Error writing response to client:', err);
         }
@@ -816,9 +852,18 @@ export class ProxyServer extends EventEmitter {
     });
 
     if (body.length > 0) {
-      proxyReq.write(body);
+      const uploadThrottle = this.throttleService?.createThrottleStream('upload', fullUrl);
+      if (uploadThrottle) {
+        uploadThrottle.pipe(proxyReq);
+        uploadThrottle.write(body);
+        uploadThrottle.end();
+      } else {
+        proxyReq.write(body);
+        proxyReq.end();
+      }
+    } else {
+      proxyReq.end();
     }
-    proxyReq.end();
   }
 
   /**
@@ -889,7 +934,8 @@ export class ProxyServer extends EventEmitter {
     requestId: number,
     startTime: number,
     proxyRes: http.IncomingMessage,
-    clientRes: http.ServerResponse
+    clientRes: http.ServerResponse,
+    url?: string
   ): void {
     const responseBody: Buffer[] = [];
 
@@ -947,7 +993,14 @@ export class ProxyServer extends EventEmitter {
 
     // Forward response to client
     clientRes.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
-    proxyRes.pipe(clientRes);
+    
+    // Apply throttle stream if enabled
+    const throttleStream = this.throttleService?.createThrottleStream('download', url);
+    if (throttleStream) {
+      proxyRes.pipe(throttleStream).pipe(clientRes);
+    } else {
+      proxyRes.pipe(clientRes);
+    }
   }
 
   /**

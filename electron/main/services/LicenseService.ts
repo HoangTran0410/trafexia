@@ -1,12 +1,12 @@
 import * as crypto from 'crypto';
 import * as os from 'os';
-import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
+import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore/lite';
 import { db } from '../utils/firebase';
 import type { TrafficStorage } from './TrafficStorage';
 import type { LicenseInfo, LicenseTier } from '../../../shared/types';
+import { FEATURE_GATES } from '../../../shared/types';
 
 const LICENSE_SETTING_KEY = 'license_data';
-const TRAFEXIA_PUBLIC_KEY = 'trafexia-license-v1';
 
 export class LicenseService {
   private storage: TrafficStorage;
@@ -16,14 +16,8 @@ export class LicenseService {
   constructor(storage: TrafficStorage) {
     this.storage = storage;
     this.currentLicense = this.getFreeLicense();
-    
-    // Fallback gates from shared types
-    try {
-      const { FEATURE_GATES } = require('../../../shared/types');
-      this.featureGates = { ...FEATURE_GATES };
-    } catch (e) {
-      console.warn('[LicenseService] Could not load default FEATURE_GATES');
-    }
+    // Use statically imported FEATURE_GATES as default
+    this.featureGates = { ...FEATURE_GATES };
   }
 
   /**
@@ -69,11 +63,18 @@ export class LicenseService {
         querySnapshot.docs.forEach(doc => {
           newGates[doc.id] = doc.data().tier as LicenseTier;
         });
-        this.featureGates = newGates;
-        console.log('[LicenseService] Remote feature gates synchronized');
+        
+        // IMPORTANT: Merge with defaults, don't overwrite!
+        this.featureGates = { ...FEATURE_GATES, ...newGates };
+        console.log(`[LicenseService] Remote feature gates synchronized. Total gated features: ${Object.keys(this.featureGates).length}`);
+      } else {
+        // Ensure defaults are set if remote is empty
+        this.featureGates = { ...FEATURE_GATES };
       }
     } catch (error) {
       console.error('[LicenseService] Error fetching feature gates:', error);
+      // Fallback to static defaults
+      this.featureGates = { ...FEATURE_GATES };
     }
   }
 
@@ -137,10 +138,10 @@ export class LicenseService {
    * Activate a license key
    */
   async activateLicense(key: string, email: string): Promise<LicenseInfo> {
-    // Validate key format: TRFX-XXXX-XXXX-XXXX-XXXX
-    const keyRegex = /^TRFX-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/;
+    // Validate key format: TRFX-P/TXXXX-XXXX-XXXX-XXXX
+    const keyRegex = /^TRFX-[A-Z0-9]{5}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/;
     if (!keyRegex.test(key)) {
-      throw new Error('Invalid license key format. Expected: TRFX-XXXX-XXXX-XXXX-XXXX');
+      throw new Error('Invalid license key format. Expected: TRFX-PXXXX-XXXX-XXXX-XXXX');
     }
 
     // Validate email
@@ -221,6 +222,7 @@ export class LicenseService {
   hasFeature(featureId: string): boolean {
     const requiredTier = this.featureGates[featureId];
     
+    // If feature not defined or set to free, allow
     if (!requiredTier || requiredTier === 'free') return true;
     
     const tierLevel: Record<LicenseTier, number> = {
@@ -229,7 +231,17 @@ export class LicenseService {
       'team': 2,
     };
 
-    return tierLevel[this.currentLicense.tier] >= tierLevel[requiredTier];
+    const userTier = this.currentLicense.tier || 'free';
+    const userLevel = tierLevel[userTier] ?? 0;
+    const requiredLevel = tierLevel[requiredTier] ?? 0;
+
+    const allowed = userLevel >= requiredLevel;
+    
+    if (!allowed) {
+      console.warn(`[LicenseService] Feature access denied: ${featureId} (Required: ${requiredTier}, User: ${userTier})`);
+    }
+
+    return allowed;
   }
 
   /**
@@ -281,31 +293,6 @@ export class LicenseService {
     if (!data.licenseKey) return false;
 
     return true;
-  }
-
-  /**
-   * Derive tier from license key
-   * Key format: TRFX-[TIER][DATA]-XXXX-XXXX-XXXX
-   * P = Pro, T = Team
-   */
-  private deriveTierFromKey(key: string): LicenseTier {
-    const parts = key.split('-');
-    if (parts.length < 2) return 'free';
-    
-    const firstChar = parts[1][0];
-    switch (firstChar) {
-      case 'P': return 'pro';
-      case 'T': return 'team';
-      default: return 'pro'; // Default to pro for any valid key
-    }
-  }
-
-  /**
-   * Generate a signature for license validation
-   */
-  private generateSignature(key: string, email: string, machineId: string): string {
-    const data = `${key}:${email}:${machineId}:${TRAFEXIA_PUBLIC_KEY}`;
-    return crypto.createHash('sha256').update(data).digest('hex');
   }
 
   /**

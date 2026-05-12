@@ -14,6 +14,7 @@ import type {
   MapRule,
   ThrottleProfile,
   LicenseInfo,
+  LicenseTier,
   SavedSession,
   PatchResult,
   FridaArch,

@@ -67,7 +67,11 @@ const requestCount = computed(() => trafficStore.filteredRequests.length);
 
 // Event handlers
 function handleRequestCaptured(request: any) {
-  trafficStore.addRequest(request);
+  if (Array.isArray(request)) {
+    request.forEach(r => trafficStore.updateRequest(r));
+  } else {
+    trafficStore.updateRequest(request);
+  }
 }
 
 function handleProxyError(error: string) {
@@ -171,175 +175,114 @@ function exportPostman() {
     <Toast position="bottom-right" />
     <ConfirmDialog />
 
-    <!-- Header -->
-    <header
-      class="app-header"
-      style="
-        height: 56px;
-        display: flex;
-        align-items: center;
-        padding: 0 16px 0 80px;
-        gap: 16px;
-        background: #161b22;
-        border-bottom: 1px solid rgba(48, 54, 61, 0.8);
-      "
-    >
-      <div
-        style="display: flex; align-items: center; gap: 10px; flex-shrink: 0"
-      >
-        <Network style="width: 24px; height: 24px; color: #58a6ff" />
-        <span
-          style="
-            font-weight: 600;
-            font-size: 17px;
-            color: #e6edf3;
-            white-space: nowrap;
-          "
-          >Trafexia</span
-        >
+    <header class="app-header">
+      <!-- Left: Brand -->
+      <div class="header-left">
+        <div class="app-brand">
+          <div class="brand-logo">
+            <Network :size="20" />
+          </div>
+          <span class="brand-name">TRAFEXIA</span>
+        </div>
       </div>
 
-      <!-- Proxy Control -->
-      <ProxyControl />
+      <!-- Center: Proxy Control (takes remaining space) -->
+      <div class="header-center">
+        <ProxyControl />
+      </div>
 
-      <!-- Spacer -->
-      <div class="flex-1"></div>
-
-      <!-- Actions -->
-      <div class="header-actions">
-        <!-- Request Counter -->
-        <div class="request-counter">
-          <span class="counter-value">{{ requestCount }}</span>
-          <span class="counter-label">requests</span>
+      <!-- Right: Actions -->
+      <div class="header-right">
+        <!-- Tools Group -->
+        <div class="action-group">
+          <button class="icon-btn"
+            @click="licenseStore.guardFeature('request-composer') && (showComposer = true)"
+            :title="'Composer' + (!licenseStore.hasFeature('request-composer') ? ' (Locked)' : '')"
+            :class="{ locked: !licenseStore.hasFeature('request-composer') }">
+            <Pencil :size="14" />
+          </button>
+          <button class="icon-btn"
+            @click="licenseStore.guardFeature('mock-rules') && (showMockRules = true)"
+            :title="'Mock' + (!licenseStore.hasFeature('mock-rules') ? ' (Locked)' : '')"
+            :class="{ locked: !licenseStore.hasFeature('mock-rules') }">
+            <ShieldCheck :size="14" />
+          </button>
+          <button class="icon-btn"
+            @click="licenseStore.guardFeature('map-rules') && (showMapRules = true)"
+            :title="'Map' + (!licenseStore.hasFeature('map-rules') ? ' — PRO' : '')"
+            :class="{ locked: !licenseStore.hasFeature('map-rules') }">
+            <Map :size="14" />
+          </button>
+          <button class="icon-btn"
+            @click="licenseStore.guardFeature('ssl-bypass') && (showSslBypass = true)"
+            :title="'SSL Bypass' + (!licenseStore.hasFeature('ssl-bypass') ? ' — PRO' : '')"
+            :class="{ locked: !licenseStore.hasFeature('ssl-bypass') }">
+            <Lock :size="14" />
+          </button>
+          <button class="icon-btn"
+            @click="licenseStore.guardFeature('throttle') && (showThrottle = !showThrottle)"
+            :title="'Throttle' + (!licenseStore.hasFeature('throttle') ? ' — PRO' : '')"
+            :class="{ locked: !licenseStore.hasFeature('throttle') }">
+            <Gauge :size="14" />
+          </button>
+          <button class="icon-btn"
+            @click="licenseStore.guardFeature('diff-compare') && (showDiff = true)"
+            :title="'Diff' + (!licenseStore.hasFeature('diff-compare') ? ' — PRO' : '')"
+            :class="{ locked: !licenseStore.hasFeature('diff-compare') }">
+            <GitCompare :size="14" />
+          </button>
         </div>
 
-        <!-- Request Composer -->
-        <button
-          class="btn btn-ghost btn-icon"
-          @click="showComposer = true"
-          title="Request Composer"
-        >
-          <Pencil class="w-5 h-5" />
-        </button>
+        <!-- Utility Group -->
+        <div class="action-group">
+          <button class="icon-btn"
+            @click="licenseStore.guardFeature('export-postman') && exportPostman()"
+            :title="'Export' + (!licenseStore.hasFeature('export-postman') ? ' — PRO' : '')"
+            :class="{ locked: !licenseStore.hasFeature('export-postman') }">
+            <Download :size="14" />
+          </button>
+          <button class="icon-btn"
+            @click="licenseStore.guardFeature('qr-code') && openQrCode()"
+            :disabled="!proxyStore.isRunning"
+            :title="proxyStore.isRunning ? 'QR Connect' : 'Start proxy first'"
+            :class="{ locked: !licenseStore.hasFeature('qr-code') }">
+            <QrCode :size="14" />
+          </button>
+          <button class="icon-btn"
+            @click="licenseStore.guardFeature('clear-requests') && clearRequests()"
+            :title="'Clear'"
+            :class="{ locked: !licenseStore.hasFeature('clear-requests') }">
+            <Trash2 :size="14" />
+          </button>
+          <button class="icon-btn"
+            :class="{ active: showFilters, locked: !licenseStore.hasFeature('filter-requests') }"
+            @click="licenseStore.guardFeature('filter-requests') && (showFilters = !showFilters)"
+            title="Filters">
+            <Filter :size="14" />
+          </button>
+          <button class="icon-btn" @click="showSettings = true" title="Settings">
+            <Settings :size="14" />
+          </button>
+        </div>
 
-        <!-- Mock Rules -->
-        <button
-          class="btn btn-ghost btn-icon"
-          @click="showMockRules = true"
-          title="Mock Rules"
-        >
-          <ShieldCheck class="w-5 h-5" />
-        </button>
-
-        <!-- Map Local/Remote -->
-        <button
-          class="btn btn-ghost btn-icon"
-          @click="licenseStore.guardFeature('map-rules') && (showMapRules = true)"
-          title="Map Local / Remote"
-        >
-          <Map class="w-5 h-5" />
-        </button>
-
-        <!-- SSL Bypass -->
-        <button
-          class="btn btn-ghost btn-icon"
-          @click="showSslBypass = true"
-          title="SSL Pinning Bypass"
-        >
-          <Lock class="w-5 h-5" />
-        </button>
-
-        <!-- Throttle -->
-        <button
-          class="btn btn-ghost btn-icon"
-          @click="showThrottle = !showThrottle"
-          title="Network Throttle"
-        >
-          <Gauge class="w-5 h-5" />
-        </button>
-
-        <!-- Diff Compare -->
-        <button
-          class="btn btn-ghost btn-icon"
-          @click="licenseStore.guardFeature('diff-compare') && (showDiff = true)"
-          title="Request Diff / Compare"
-        >
-          <GitCompare class="w-5 h-5" />
-        </button>
-
-        <!-- View Mode Toggle -->
-        <div class="view-toggle">
-          <button
-            :class="['view-toggle-btn', { active: viewMode === 'list' }]"
-            @click="viewMode = 'list'"
-            title="List View"
-          >
+        <!-- View Toggle -->
+        <div class="view-group">
+          <button :class="['view-btn', { active: viewMode === 'list' }]" @click="viewMode = 'list'">
             <i class="pi pi-list"></i>
           </button>
-          <button
-            :class="['view-toggle-btn', { active: viewMode === 'timeline' }]"
-            @click="viewMode = 'timeline'"
-            title="Timeline View"
-          >
+          <button :class="['view-btn', { active: viewMode === 'timeline' }]" @click="viewMode = 'timeline'">
             <i class="pi pi-chart-bar"></i>
           </button>
         </div>
 
-        <!-- Filter Toggle -->
-        <button
-          class="btn btn-ghost btn-icon"
-          :class="{ active: showFilters }"
-          @click="showFilters = !showFilters"
-          title="Toggle Filters"
-        >
-          <Filter class="w-5 h-5" />
-        </button>
-
-        <!-- Export -->
-        <button
-          class="btn btn-ghost btn-icon"
-          @click="exportPostman"
-          title="Export to Postman"
-        >
-          <Download class="w-5 h-5" />
-        </button>
-
-        <!-- QR Code -->
-        <button
-          class="btn btn-ghost btn-icon"
-          @click="openQrCode"
-          :disabled="!proxyStore.isRunning"
-          title="Show QR Code"
-        >
-          <QrCode class="w-5 h-5" />
-        </button>
-
-        <!-- Clear -->
-        <button
-          class="btn btn-ghost btn-icon"
-          @click="clearRequests"
-          title="Clear All Requests"
-        >
-          <Trash2 class="w-5 h-5" />
-        </button>
-
-        <!-- Settings -->
-        <button
-          class="btn btn-ghost btn-icon"
-          @click="showSettings = true"
-          title="Settings"
-        >
-          <Settings class="w-5 h-5" />
-        </button>
-
         <!-- License Badge -->
         <button
-          class="license-badge"
+          class="license-badge-premium"
           :class="licenseStore.isFree ? 'free' : 'pro'"
           @click="licenseStore.showUpgradeDialog = true"
-          :title="`Trafexia ${licenseStore.tierLabel}`"
         >
-          <Crown :size="14" v-if="licenseStore.isPro" />
+          <Crown :size="12" v-if="licenseStore.isPro" />
+          <Lock :size="10" v-else />
           <span>{{ licenseStore.tierLabel }}</span>
         </button>
       </div>
@@ -350,14 +293,7 @@ function exportPostman() {
       <!-- Filter Sidebar -->
       <aside
         v-if="showFilters"
-        style="
-          width: 400px;
-          background: #161b22;
-          border-right: 1px solid rgba(48, 54, 61, 0.8);
-          display: flex;
-          flex-direction: column;
-          flex-shrink: 0;
-        "
+        class="filter-sidebar"
       >
         <div
           style="
@@ -509,14 +445,184 @@ function exportPostman() {
 
 .app-header {
   height: 56px;
-  min-height: 56px;
-  background: var(--color-bg-secondary);
-  border-bottom: 1px solid var(--color-border);
+  background: #0B1120;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   align-items: center;
-  padding: 0 16px;
-  gap: 16px;
+  padding: 0 20px;
+  justify-content: space-between;
   -webkit-app-region: drag;
+  z-index: 100;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  -webkit-app-region: no-drag;
+  flex-shrink: 0;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  -webkit-app-region: no-drag;
+  flex-shrink: 0;
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.brand-logo {
+  width: 28px;
+  height: 28px;
+  background: #38BDF8;
+  color: #0F172A;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.brand-name {
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: #F1F5F9;
+  white-space: nowrap;
+}
+
+.header-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  -webkit-app-region: no-drag;
+  min-width: 0;
+  padding: 0 8px;
+}
+
+.request-stats {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.request-stats .count { font-size: 14px; font-weight: 700; color: #38BDF8; }
+.request-stats .label { font-size: 9px; font-weight: 800; color: #64748B; letter-spacing: 1px; }
+
+.action-group, .view-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.icon-btn, .view-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: #94A3B8;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.icon-btn.locked {
+  opacity: 0.4;
+  cursor: not-allowed;
+  position: relative;
+}
+
+.icon-btn.locked::after {
+  content: '🔒';
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  font-size: 8px;
+  line-height: 1;
+}
+
+.icon-btn:hover, .view-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #F1F5F9;
+}
+
+.icon-btn.locked:hover {
+  background: transparent;
+  color: #94A3B8;
+}
+
+.icon-btn.active {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38BDF8;
+}
+
+.icon-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.icon-btn:disabled:hover {
+  background: transparent;
+  color: #94A3B8;
+}
+
+.view-btn.active {
+  background: #38BDF8;
+  color: #0F172A;
+}
+
+.license-badge-premium {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+}
+
+.license-badge-premium.free {
+  background: rgba(148, 163, 184, 0.1);
+  color: #94A3B8;
+  border-color: rgba(148, 163, 184, 0.2);
+}
+
+.license-badge-premium.pro {
+  background: rgba(56, 189, 248, 0.1);
+  color: #38BDF8;
+  border-color: rgba(56, 189, 248, 0.3);
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.1);
+}
+
+.license-badge-premium.pro:hover {
+  background: rgba(56, 189, 248, 0.2);
+  transform: translateY(-1px);
 }
 
 .app-header > * {
@@ -782,5 +888,47 @@ function exportPostman() {
 @keyframes slideDown {
   from { transform: translateY(-8px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
+}
+
+/* ===== RESPONSIVE ===== */
+
+.filter-sidebar {
+  width: 360px;
+  max-width: 40vw;
+  background: #161b22;
+  border-right: 1px solid rgba(48, 54, 61, 0.8);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+/* Medium screens (<1200px): tighten gaps */
+@media (max-width: 1200px) {
+  .header-right { gap: 4px; }
+  .action-group, .view-group { gap: 1px; padding: 2px; }
+  .filter-sidebar { width: 300px; }
+}
+
+/* Small screens (<1000px): hide less important items */
+@media (max-width: 1000px) {
+  .app-header { padding: 0 10px; }
+  .brand-name { display: none; }
+  .view-group { display: none; }
+  .license-badge-premium span { display: none; }
+  .license-badge-premium { padding: 4px 6px; }
+  .icon-btn, .view-btn { width: 26px; height: 26px; }
+  .filter-sidebar { width: 260px; }
+}
+
+/* Very small screens (<800px): compact mode */
+@media (max-width: 800px) {
+  .app-header { height: 48px; padding: 0 8px; }
+  .header-right { gap: 2px; }
+  .action-group { border: none; background: none; padding: 0; gap: 1px; }
+  .icon-btn, .view-btn { width: 24px; height: 24px; }
+  .throttle-floating { width: calc(100vw - 32px); right: 16px; }
+  .filter-sidebar { width: 100%; max-width: 100vw; position: absolute; z-index: 50; left: 0; top: 0; bottom: 0; }
+  /* Hide tools group on very small screens, keep utility */
+  .header-right > .action-group:first-child { display: none; }
 }
 </style>

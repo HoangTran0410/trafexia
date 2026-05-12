@@ -1,8 +1,77 @@
+import { Transform, TransformCallback } from 'stream';
 import type { ThrottleProfile, ThrottlePreset } from '../../../shared/types';
 import { THROTTLE_PRESETS } from '../../../shared/types';
 import type { TrafficStorage } from './TrafficStorage';
 
 const THROTTLE_SETTING_KEY = 'throttle_profile';
+
+/**
+ * A Transform stream that throttles data based on a speed limit (Bps) and latency (ms).
+ */
+export class ThrottleTransform extends Transform {
+  private bps: number;
+  private latency: number;
+  private packetLoss: number;
+  private firstChunk = true;
+  private bytesSent = 0;
+  private startTime: number = 0;
+
+  constructor(bps: number, latency: number, packetLoss: number = 0) {
+    super();
+    this.bps = bps;
+    this.latency = latency;
+    this.packetLoss = packetLoss;
+  }
+
+  _transform(chunk: any, encoding: BufferEncoding, callback: TransformCallback): void {
+    const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, encoding);
+
+    // Simulate packet loss
+    if (this.packetLoss > 0 && Math.random() * 100 < this.packetLoss) {
+      console.log(`[ThrottleTransform] Dropped packet of size ${data.length}`);
+      callback();
+      return;
+    }
+
+    if (this.firstChunk) {
+      this.firstChunk = false;
+      this.startTime = Date.now();
+      
+      // Apply initial latency delay
+      if (this.latency > 0) {
+        setTimeout(() => this.processChunk(data, callback), this.latency);
+        return;
+      }
+    }
+
+    this.processChunk(data, callback);
+  }
+
+  private processChunk(data: Buffer, callback: TransformCallback): void {
+    if (this.bps <= 0) {
+      this.push(data);
+      callback();
+      return;
+    }
+
+    // Calculate when this chunk *should* be finished sending
+    // Total bytes / Bytes per second = total seconds
+    this.bytesSent += data.length;
+    const targetTimeMs = (this.bytesSent / this.bps) * 1000;
+    const currentTimeMs = Date.now() - this.startTime;
+    const waitTime = Math.max(0, targetTimeMs - currentTimeMs);
+
+    if (waitTime > 0) {
+      setTimeout(() => {
+        this.push(data);
+        callback();
+      }, waitTime);
+    } else {
+      this.push(data);
+      callback();
+    }
+  }
+}
 
 export class ThrottleService {
   private storage: TrafficStorage;
@@ -89,66 +158,17 @@ export class ThrottleService {
   }
 
   /**
-   * Get delay for a response based on its size
-   * Returns milliseconds to delay
+   * Create a throttle transform stream for a given direction
    */
-  calculateDelay(sizeBytes: number, direction: 'download' | 'upload'): number {
-    if (!this.isEnabled()) return 0;
+  createThrottleStream(direction: 'download' | 'upload', url?: string): Transform | null {
+    if (!this.isEnabled()) return null;
+    if (url && !this.shouldThrottle(url)) return null;
 
     const speed = direction === 'download' 
       ? this.profile.downloadSpeed 
       : this.profile.uploadSpeed;
 
-    if (speed <= 0) return 0;
-
-    // Calculate transfer time in ms
-    const transferTimeMs = (sizeBytes / speed) * 1000;
-    
-    // Add base latency
-    const totalDelay = transferTimeMs + this.profile.latency;
-
-    return Math.round(totalDelay);
-  }
-
-  /**
-   * Check if packet should be "lost" (simulated packet loss)
-   */
-  shouldDropPacket(): boolean {
-    if (!this.isEnabled() || this.profile.packetLoss <= 0) return false;
-    return Math.random() * 100 < this.profile.packetLoss;
-  }
-
-  /**
-   * Apply throttling to a stream by chunking data and adding delays
-   * Returns a function that, given the full buffer, returns delayed chunks
-   */
-  createThrottledWriter(totalSize: number, direction: 'download' | 'upload'): {
-    delay: number;
-    chunkSize: number;
-    chunks: number;
-  } {
-    if (!this.isEnabled()) {
-      return { delay: 0, chunkSize: totalSize, chunks: 1 };
-    }
-
-    const speed = direction === 'download'
-      ? this.profile.downloadSpeed
-      : this.profile.uploadSpeed;
-
-    if (speed <= 0) {
-      return { delay: this.profile.latency, chunkSize: totalSize, chunks: 1 };
-    }
-
-    // Chunk every 100ms worth of data
-    const chunkInterval = 100; // ms
-    const chunkSize = Math.max(1, Math.floor(speed * (chunkInterval / 1000)));
-    const chunks = Math.ceil(totalSize / chunkSize);
-
-    return {
-      delay: chunkInterval,
-      chunkSize,
-      chunks,
-    };
+    return new ThrottleTransform(speed, this.profile.latency, this.profile.packetLoss);
   }
 
   private getDefaultProfile(): ThrottleProfile {

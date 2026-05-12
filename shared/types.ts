@@ -370,18 +370,39 @@ export interface LicenseInfo {
 }
 
 export const FEATURE_GATES: Record<string, LicenseTier> = {
+  // === FREE TIER (default on) ===
+  "qr-code": "free",
+  "copy-curl": "free",
+  "copy-url": "free",
+  "clear-requests": "free",
+  "filter-requests": "free",
+  "mock-rules": "free",
+  "breakpoints": "free",
+  "request-composer": "free",
+  "replay": "free",
+
+  // === PRO TIER ===
   "map-rules": "pro",
   "throttle": "pro",
   "diff-compare": "pro",
-  "advanced-export": "pro",
-  "session-save": "pro",
   "ssl-bypass": "pro",
+  "session-save": "pro",
+  "websocket": "pro",
+  "graphql": "pro",
   "unlimited-mock": "pro",
   "unlimited-breakpoints": "pro",
   "scripting": "pro",
-  "websocket": "pro",
-  "graphql": "pro",
+
+  // === EXPORT ===
+  "export-curl": "free",
+  "export-har": "pro",
+  "export-postman": "pro",
+  "export-python": "pro",
+  "export-advanced": "pro",
+
+  // === TEAM TIER ===
   "shared-sessions": "team",
+  "team-collaboration": "team",
 };
 
 // ===== Session =====

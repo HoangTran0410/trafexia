@@ -25,7 +25,8 @@ import type {
   MockRule,
   MapRule,
   ThrottleProfile,
-  LicenseInfo
+  LicenseInfo,
+  LicenseTier
 } from '../../shared/types';
 import { IPC_CHANNELS, DEFAULT_SETTINGS } from '../../shared/types';
 import { getLocalIp } from './utils/network';
@@ -46,6 +47,17 @@ interface Services {
 
 export function setupIpcHandlers(services: Services): void {
   const { certificateManager, proxyServer, trafficStorage, certServer, breakpointService, mockService, requestComposer, licenseService, mapService, throttleService, mainWindow } = services;
+
+  /**
+   * Server-side feature gate enforcement.
+   * Throws if the current license tier doesn't allow the feature.
+   * This is the REAL enforcement — UI guards are just UX hints.
+   */
+  function requireFeature(featureId: string): void {
+    if (!licenseService.hasFeature(featureId)) {
+      throw new Error(`FEATURE_LOCKED:${featureId}: Your current license tier does not support this feature.`);
+    }
+  }
 
   // ===== Proxy Control =====
 
@@ -78,15 +90,18 @@ export function setupIpcHandlers(services: Services): void {
         }
       };
 
-      proxyServer.on('request:complete', (request: CapturedRequest) => {
+      const handleCapturedRequest = (request: CapturedRequest) => {
         requestBuffer.push(request);
         
         if (requestBuffer.length >= 50) {
           sendBatch();
         } else if (!batchTimeout) {
-          batchTimeout = setTimeout(sendBatch, 100);
+          batchTimeout = setTimeout(sendBatch, 50); // Faster batching for better UX
         }
-      });
+      };
+
+      proxyServer.on('request', handleCapturedRequest);
+      proxyServer.on('request:complete', handleCapturedRequest);
 
       console.log('[IPC] Proxy started:', status);
       return status;
@@ -483,6 +498,13 @@ export function setupIpcHandlers(services: Services): void {
 
   ipcMain.handle(IPC_CHANNELS.MOCK_ADD_RULE, async (_event, rule: Omit<MockRule, 'id'>): Promise<MockRule> => {
     try {
+      // Free tier: max 5 mock rules
+      if (!licenseService.hasFeature('unlimited-mock')) {
+        const existing = mockService.getRules();
+        if (existing.length >= 5) {
+          throw new Error('FEATURE_LOCKED:unlimited-mock');
+        }
+      }
       const newRule = mockService.addRule(rule);
       console.log('[IPC] Mock rule added:', newRule.name);
       return newRule;
@@ -530,6 +552,7 @@ export function setupIpcHandlers(services: Services): void {
 
   ipcMain.handle(IPC_CHANNELS.MAP_ADD_RULE, async (_event, rule: Omit<MapRule, 'id'>): Promise<MapRule> => {
     try {
+      requireFeature('map-rules');
       const newRule = mapService.addRule(rule);
       console.log('[IPC] Map rule added:', newRule.name);
       return newRule;
@@ -540,14 +563,17 @@ export function setupIpcHandlers(services: Services): void {
   });
 
   ipcMain.handle(IPC_CHANNELS.MAP_UPDATE_RULE, async (_event, id: string, updates: Partial<MapRule>): Promise<void> => {
+    requireFeature('map-rules');
     mapService.updateRule(id, updates);
   });
 
   ipcMain.handle(IPC_CHANNELS.MAP_DELETE_RULE, async (_event, id: string): Promise<void> => {
+    requireFeature('map-rules');
     mapService.deleteRule(id);
   });
 
   ipcMain.handle(IPC_CHANNELS.MAP_TOGGLE_RULE, async (_event, id: string, enabled: boolean): Promise<void> => {
+    requireFeature('map-rules');
     mapService.toggleRule(id, enabled);
   });
 
@@ -558,6 +584,7 @@ export function setupIpcHandlers(services: Services): void {
   });
 
   ipcMain.handle(IPC_CHANNELS.THROTTLE_SET_PROFILE, async (_event, profile: ThrottleProfile): Promise<void> => {
+    requireFeature('throttle');
     throttleService.setProfile(profile);
   });
 

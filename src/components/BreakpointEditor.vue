@@ -71,7 +71,9 @@ async function continueRequest(modified: boolean = false) {
         body: editedBody.value || null,
       };
       
-      await window.electronAPI.continueBreakpoint(pendingRequest.value.id, modifiedRequest);
+      // Clone to plain object to avoid Proxy cloning issues in IPC
+      const plainModified = JSON.parse(JSON.stringify(modifiedRequest));
+      await window.electronAPI.continueBreakpoint(pendingRequest.value.id, plainModified);
       
       toast.add({
         severity: 'success',

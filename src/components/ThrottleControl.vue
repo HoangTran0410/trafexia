@@ -78,7 +78,9 @@ async function selectPreset(preset: ThrottlePreset | 'custom') {
 async function applyProfile() {
   isLoading.value = true;
   try {
-    await window.electronAPI.setThrottleProfile(profile.value);
+    // Clone to plain object to avoid Proxy cloning issues in IPC
+    const plainProfile = JSON.parse(JSON.stringify(profile.value));
+    await window.electronAPI.setThrottleProfile(plainProfile);
     toast.add({
       severity: isActive.value ? 'warn' : 'success',
       summary: isActive.value ? 'Throttling Active' : 'Throttling Disabled',

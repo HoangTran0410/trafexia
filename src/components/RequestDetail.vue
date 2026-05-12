@@ -17,6 +17,7 @@ import xml from 'highlight.js/lib/languages/xml';
 import 'highlight.js/styles/github-dark.css';
 
 import { useTrafficStore } from '@/stores/trafficStore';
+import { useLicenseStore } from '@/stores/licenseStore';
 import {
   getStatusClass,
   prettyPrintJson,
@@ -29,6 +30,7 @@ hljs.registerLanguage('xml', xml);
 
 const toast = useToast();
 const trafficStore = useTrafficStore();
+const licenseStore = useLicenseStore();
 const activeTab = ref<'headers' | 'body' | 'response' | 'raw'>('headers');
 const showRequestHeaders = ref(true);
 const showResponseHeaders = ref(true);
@@ -96,11 +98,13 @@ async function copyToClipboard(text: string, message: string) {
 }
 
 function copyUrl() {
+  if (!licenseStore.guardFeature('copy-url')) return;
   if (request.value) copyToClipboard(request.value.url, 'URL copied');
 }
 
 function copyAsCurl() {
-  if (request.value) copyToClipboard(generateCurl(request.value), 'cURL copied');
+  if (!licenseStore.guardFeature('copy-curl')) return;
+  if (request.value) copyToClipboard(generateCurl(request.value), 'cURL command copied');
 }
 
 function copyRequestBody() {
@@ -123,32 +127,16 @@ const isReplaying = ref(false);
 
 async function replayRequest() {
   if (!request.value || isReplaying.value) return;
+  if (!licenseStore.guardFeature('replay')) return;
   
   isReplaying.value = true;
   try {
-    toast.add({ 
-      severity: 'info', 
-      summary: 'Replaying...', 
-      detail: `${request.value.method} ${request.value.url}`, 
-      life: 2000 
-    });
-    
+    toast.add({ severity: 'info', summary: 'Replaying...', detail: `${request.value.method} ${request.value.url}`, life: 2000 });
     await window.electronAPI.replayRequest(request.value.id);
-    
-    toast.add({ 
-      severity: 'success', 
-      summary: 'Replayed', 
-      detail: 'Request sent successfully', 
-      life: 3000 
-    });
+    toast.add({ severity: 'success', summary: 'Replayed', detail: 'Request sent successfully', life: 3000 });
   } catch (error) {
     console.error('Failed to replay request:', error);
-    toast.add({ 
-      severity: 'error', 
-      summary: 'Failed', 
-      detail: 'Could not replay request', 
-      life: 3000 
-    });
+    toast.add({ severity: 'error', summary: 'Failed', detail: 'Could not replay request', life: 3000 });
   } finally {
     isReplaying.value = false;
   }
@@ -176,20 +164,35 @@ function close() {
         :title="request.url">{{ request.url }}</span>
 
       <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
-        <button 
-          class="btn btn-ghost btn-icon" 
-          @click="replayRequest" 
-          :disabled="isReplaying"
-          title="Replay Request">
-          <RefreshCw 
-            style="width: 16px; height: 16px;" 
-            :class="{ 'animate-spin': isReplaying }" />
+        <!-- Replay (free, remotely gateable) -->
+        <button
+          class="btn btn-ghost btn-icon"
+          @click="replayRequest"
+          :disabled="isReplaying || !licenseStore.hasFeature('replay')"
+          :title="licenseStore.hasFeature('replay') ? 'Replay Request' : 'Replay — Locked'"
+          :class="{ 'feature-locked': !licenseStore.hasFeature('replay') }"
+        >
+          <RefreshCw style="width: 16px; height: 16px;" :class="{ 'animate-spin': isReplaying }" />
         </button>
         <div style="width: 1px; height: 16px; background: #30363d; margin: 0 4px;"></div>
-        <button class="btn btn-ghost btn-icon" @click="copyUrl" title="Copy URL">
+
+        <!-- Copy URL (free, remotely gateable) -->
+        <button
+          class="btn btn-ghost btn-icon"
+          @click="copyUrl"
+          :title="licenseStore.hasFeature('copy-url') ? 'Copy URL' : 'Copy URL — Locked'"
+          :class="{ 'feature-locked': !licenseStore.hasFeature('copy-url') }"
+        >
           <Copy style="width: 16px; height: 16px;" />
         </button>
-        <button class="btn btn-ghost btn-icon" @click="copyAsCurl" title="Copy as cURL">
+
+        <!-- Copy as cURL (free, remotely gateable) -->
+        <button
+          class="btn btn-ghost btn-icon"
+          @click="copyAsCurl"
+          :title="licenseStore.hasFeature('copy-curl') ? 'Copy as cURL' : 'Copy cURL — Locked'"
+          :class="{ 'feature-locked': !licenseStore.hasFeature('copy-curl') }"
+        >
           <Terminal style="width: 16px; height: 16px;" />
         </button>
         <button class="btn btn-ghost btn-icon" @click="copyRequestBody" title="Copy Request Body">
@@ -500,5 +503,11 @@ Host: {{ request.host || '' }}
   font-weight: 600;
   color: var(--color-text-primary);
   margin-bottom: 8px;
+}
+
+.feature-locked {
+  opacity: 0.35;
+  cursor: not-allowed !important;
+  pointer-events: none;
 }
 </style>

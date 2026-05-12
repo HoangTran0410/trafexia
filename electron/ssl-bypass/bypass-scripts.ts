@@ -444,30 +444,37 @@ Java.perform(function() {
     });
 
     var TrustManagers = [TrustManager.$new()];
-    var SSLContextInit = SSLContext.init;
+
+    // Hook SSLContext.init
+    SSLContext.init.overload('[Ljavax.net.ssl.KeyManager;', '[Ljavax.net.ssl.TrustManager;', 'java.security.SecureRandom').implementation = function(km, tm, sr) {
+      console.log('[+] SSLContext.init intercepted - injecting universal trust manager');
+      this.init(km, TrustManagers, sr);
+    };
 
     // Hook HttpsURLConnection
     try {
       var HttpsURLConnection = Java.use('javax.net.ssl.HttpsURLConnection');
       HttpsURLConnection.setDefaultSSLSocketFactory.implementation = function(factory) {
         console.log('[+] HttpsURLConnection.setDefaultSSLSocketFactory intercepted');
-        var ctx = SSLContext.getInstance('TLS');
-        ctx.init(null, TrustManagers, null);
-        this.setDefaultSSLSocketFactory(ctx.getSocketFactory());
       };
       HttpsURLConnection.setSSLSocketFactory.implementation = function(factory) {
         console.log('[+] HttpsURLConnection.setSSLSocketFactory intercepted');
-        var ctx = SSLContext.getInstance('TLS');
-        ctx.init(null, TrustManagers, null);
-        this.setSSLSocketFactory(ctx.getSocketFactory());
       };
       HttpsURLConnection.setDefaultHostnameVerifier.implementation = function(verifier) {
         console.log('[+] HttpsURLConnection.setDefaultHostnameVerifier intercepted');
-        // Don't set any real verifier
       };
     } catch (e) {
       console.log('[-] HttpsURLConnection hooks failed: ' + e.message);
     }
+
+    // Advanced: Hook Conscrypt TrustManagerImpl directly
+    try {
+      var TrustManagerImpl = Java.use('com.android.org.conscrypt.TrustManagerImpl');
+      TrustManagerImpl.checkTrustedRecursive.implementation = function(certs, host, clientAuth, untrustedChain, trustAnchorChain, ocspData, tlsSctData, pooled) {
+        console.log('[+] Conscrypt TrustManagerImpl.checkTrustedRecursive bypassed for: ' + host);
+        return Java.use('java.util.ArrayList').$new();
+      };
+    } catch (e) { }
 
     console.log('[+] Generic TrustManager bypass applied');
   } catch (e) {

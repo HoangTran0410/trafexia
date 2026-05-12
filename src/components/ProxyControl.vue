@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Play, Square, Loader2, Smartphone } from 'lucide-vue-next';
+import { Play, Square, Loader2, Smartphone, Globe, ShieldCheck } from 'lucide-vue-next';
 import { useProxyStore } from '@/stores/proxyStore';
 
 const proxyStore = useProxyStore();
 
 const statusText = computed(() => {
-  if (proxyStore.isStarting) return 'Starting...';
-  if (proxyStore.isStopping) return 'Stopping...';
-  if (proxyStore.isRunning) return 'Running';
-  return 'Stopped';
+  if (proxyStore.isStarting) return 'INITIALIZING';
+  if (proxyStore.isStopping) return 'TERMINATING';
+  if (proxyStore.isRunning) return 'ACTIVE';
+  return 'IDLE';
 });
 
 const proxyAddress = computed(() => {
@@ -32,151 +32,185 @@ async function launchEmulator() {
     await window.electronAPI.launchEmulator();
   } catch (error) {
     console.error('Failed to launch emulator:', error);
-    alert('Unable to launch Android emulator. Please ensure Android SDK is installed.');
   }
 }
 </script>
 
 <template>
-  <div class="proxy-control">
-    <!-- Toggle Button -->
-    <button class="proxy-toggle"
-      :class="{ 'running': proxyStore.isRunning, 'loading': proxyStore.isStarting || proxyStore.isStopping }"
-      @click="toggleProxy" :disabled="proxyStore.isStarting || proxyStore.isStopping">
-      <Loader2 v-if="proxyStore.isStarting || proxyStore.isStopping" class="w-4 h-4 animate-spin" />
-      <Play v-else-if="!proxyStore.isRunning" class="w-4 h-4" />
-      <Square v-else class="w-4 h-4" />
-      <span>{{ proxyStore.isRunning ? 'Stop' : 'Start' }}</span>
-    </button>now give me a message for 
+  <div class="proxy-control-container">
+    <div class="control-group">
+      <!-- Main Toggle -->
+      <button 
+        class="eg-btn-control"
+        :class="{ 'running': proxyStore.isRunning, 'loading': proxyStore.isStarting || proxyStore.isStopping }"
+        @click="toggleProxy" 
+        :disabled="proxyStore.isStarting || proxyStore.isStopping"
+      >
+        <div class="icon-wrap">
+          <Loader2 v-if="proxyStore.isStarting || proxyStore.isStopping" class="animate-spin" :size="14" />
+          <Play v-else-if="!proxyStore.isRunning" :size="14" fill="currentColor" />
+          <Square v-else :size="14" fill="currentColor" />
+        </div>
+        <span class="label">{{ proxyStore.isRunning ? 'STOP ENGINE' : 'START PROXY' }}</span>
+      </button>
 
-    <!-- Emulatonow give me a message for r Button -->
-    <button class="emulator-button" @click="launchEmulator" :disabled="!proxyStore.isRunning"
-      :title="proxyStore.isRunning ? 'Launch Android emulator with proxy' : 'Please start the proxy first'">
-      <Smartphone class="w-4 h-4" />
-      <span>Android</span>
-    </button>
+      <!-- Emulator Bridge -->
+      <button 
+        class="eg-btn-bridge" 
+        @click="launchEmulator" 
+        :disabled="!proxyStore.isRunning"
+        title="Bridge to Android Emulator"
+      >
+        <Smartphone :size="14" />
+        <span>ANDROID BRIDGE</span>
+      </button>
+    </div>
 
-    <!-- Status -->
-    <div class="proxy-status" v-if="proxyStore.isRunning">
-      <span class="status-indicator"></span>
-      <span class="status-text">{{ statusText }}</span>
-      <code class="proxy-address" v-if="proxyAddress">{{ proxyAddress }}</code>
+    <!-- System Status Badge -->
+    <div class="system-status-badge" :class="{ 'active': proxyStore.isRunning }">
+      <div class="status-indicator">
+        <div class="pulse" v-if="proxyStore.isRunning"></div>
+      </div>
+      <div class="status-info">
+        <span class="status-label">{{ statusText }}</span>
+        <span class="status-address" v-if="proxyStore.isRunning && proxyAddress">{{ proxyAddress }}</span>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-/* (Styles remain unchanged) */
-.proxy-control {
+.proxy-control-container {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
+  gap: 16px;
 }
 
-.proxy-toggle {
+.control-group {
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 3px;
+}
+
+.eg-btn-control, .eg-btn-bridge {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 14px;
-  height: 32px;
+  height: 30px;
+  padding: 0 12px;
   border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  border: none;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.3, 0, 0.5, 1);
-  border: 1px solid rgba(240, 246, 252, 0.1);
-  background: #238636;
-  color: white;
-  box-shadow: 0 1px 0 rgba(27, 31, 36, 0.1);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.proxy-toggle:hover:not(:disabled) {
-  background: #2ea043;
+.eg-btn-control {
+  background: #38BDF8;
+  color: #0F172A;
 }
 
-.proxy-toggle:disabled {
-  opacity: 0.6;
+.eg-btn-control:hover:not(:disabled) {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.eg-btn-control.running {
+  background: rgba(248, 81, 73, 0.1);
+  color: #F85149;
+  border: 1px solid rgba(248, 81, 73, 0.2);
+}
+
+.eg-btn-control.running:hover {
+  background: rgba(248, 81, 73, 0.2);
+}
+
+.eg-btn-bridge {
+  background: transparent;
+  color: #94A3B8;
+}
+
+.eg-btn-bridge:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+  color: #F1F5F9;
+}
+
+.eg-btn-bridge:disabled {
+  opacity: 0.3;
   cursor: not-allowed;
-  background: #238636;
 }
 
-.proxy-toggle.running {
-  background: #21262d;
-  color: #f85149;
-  border-color: rgba(240, 246, 252, 0.1);
-}
-
-.proxy-toggle.running:hover {
-  background: #30363d;
-  color: #ff7b72;
-}
-
-.proxy-toggle.loading {
-  background: #21262d;
-  color: #8b949e;
-}
-
-.proxy-status {
+.system-status-badge {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 4px 10px;
-  background: rgba(33, 38, 45, 0.5);
-  border: 1px solid rgba(48, 54, 61, 0.5);
-  border-radius: 6px;
+  padding: 0 12px;
   height: 32px;
+  background: rgba(255, 255, 255, 0.02);
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .status-indicator {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #3fb950;
-  box-shadow: 0 0 0 2px rgba(63, 185, 80, 0.2);
+  background: #334155;
+  position: relative;
 }
 
-.status-text {
-  font-size: 13px;
-  color: #c9d1d9;
-  font-weight: 500;
+.system-status-badge.active .status-indicator {
+  background: #10B981;
 }
 
-.proxy-address {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-  font-size: 12px;
-  padding: 2px 6px;
-  background: rgba(110, 118, 129, 0.1);
-  border-radius: 4px;
-  color: #79c0ff;
+.pulse {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.4);
+  animation: pulse-out 2s infinite;
 }
 
-.emulator-button {
+@keyframes pulse-out {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+
+.status-info {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
-  height: 32px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.3, 0, 0.5, 1);
-  border: 1px solid rgba(240, 246, 252, 0.1);
-  background: #1f6feb;
-  color: white;
-  box-shadow: 0 1px 0 rgba(27, 31, 36, 0.1);
+  flex-direction: column;
+  line-height: 1;
 }
 
-.emulator-button:hover:not(:disabled) {
-  background: #388bfd;
+.status-label {
+  font-size: 9px;
+  font-weight: 800;
+  color: #64748B;
+  letter-spacing: 1px;
 }
 
-.emulator-button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  background: #21262d;
-  color: #6e7681;
-  border-color: rgba(240, 246, 252, 0.1);
+.system-status-badge.active .status-label {
+  color: #10B981;
+}
+
+.status-address {
+  font-size: 11px;
+  font-family: 'SF Mono', monospace;
+  color: #94A3B8;
+  margin-top: 2px;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 </style>

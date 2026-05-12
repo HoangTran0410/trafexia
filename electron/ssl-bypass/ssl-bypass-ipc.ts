@@ -13,6 +13,7 @@ import { patchAPK } from "./apk-patcher";
 import { injectGadget } from "./frida-injector";
 import { getBypassScript } from "./bypass-scripts";
 import { SslBypassRule } from "./ssl-bypass-rule";
+import type { LicenseService } from "../main/services/LicenseService";
 import { IPC_CHANNELS } from "../../shared/types";
 import type {
   FridaArch,
@@ -31,19 +32,24 @@ let sslBypassRule: SslBypassRule | null = null;
  */
 export function setupSslBypassIpc(
   mainWindow: () => BrowserWindow | null,
+  licenseService?: LicenseService,
 ): SslBypassRule {
   sslBypassRule = new SslBypassRule();
+
+  function requireSslBypass(): void {
+    if (licenseService && !licenseService.hasFeature('ssl-bypass')) {
+      throw new Error('FEATURE_LOCKED:ssl-bypass');
+    }
+  }
 
   // === Patch APK ===
   ipcMain.handle(
     IPC_CHANNELS.SSL_BYPASS_PATCH_APK,
     async (_event, inputPath: string, outputPath: string) => {
       try {
+        requireSslBypass();
         console.log(`[SSL-Bypass-IPC] Patching APK: ${inputPath}`);
         const result = await patchAPK(inputPath, outputPath);
-        console.log(
-          `[SSL-Bypass-IPC] Patch result: ${result.success ? "success" : "failed"}, ${result.patchedItems.length} items patched`,
-        );
         return result;
       } catch (error) {
         console.error("[SSL-Bypass-IPC] Failed to patch APK:", error);
@@ -57,12 +63,9 @@ export function setupSslBypassIpc(
     IPC_CHANNELS.SSL_BYPASS_INJECT_GADGET,
     async (_event, apkPath: string, arch: FridaArch, outputPath: string) => {
       try {
+        requireSslBypass();
         const cacheDir = path.join(app.getPath("userData"), "frida-gadgets");
-        console.log(
-          `[SSL-Bypass-IPC] Injecting gadget (${arch}) into: ${apkPath}`,
-        );
         await injectGadget(apkPath, arch, outputPath, cacheDir);
-        console.log("[SSL-Bypass-IPC] Gadget injection complete");
       } catch (error) {
         console.error("[SSL-Bypass-IPC] Failed to inject gadget:", error);
         throw error;
@@ -75,6 +78,7 @@ export function setupSslBypassIpc(
     IPC_CHANNELS.SSL_BYPASS_START_FRIDA,
     async (_event, packageName: string, framework: BypassFramework) => {
       try {
+        requireSslBypass();
         if (fridaProcess) {
           throw new Error("Frida is already running. Stop it first.");
         }

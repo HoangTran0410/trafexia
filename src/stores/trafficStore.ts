@@ -154,7 +154,9 @@ export const useTrafficStore = defineStore('traffic', () => {
   async function loadRequests(filterOptions?: FilterOptions) {
     isLoading.value = true;
     try {
-      const result = await window.electronAPI.getRequests(filterOptions || filter.value);
+      // Strip Vue reactivity proxies — IPC structured clone can't handle them
+      const plainFilter = JSON.parse(JSON.stringify(filterOptions || filter.value));
+      const result = await window.electronAPI.getRequests(plainFilter);
       requests.value = result.map(r => markRaw(r));
       totalCount.value = await window.electronAPI.getRequestCount();
       searchableCache.clear();

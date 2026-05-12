@@ -8,8 +8,10 @@ export const useLicenseStore = defineStore('license', () => {
     tier: 'free',
     isValid: true,
   });
+  // Always start with hardcoded gates so features are blocked from frame 0
   const featureGates = ref<Record<string, LicenseTier>>({ ...FEATURE_GATES });
   const isLoading = ref(false);
+  const isLoadingGates = ref(true); // true until Firestore gates are fetched
   const showUpgradeDialog = ref(false);
   const upgradeFeature = ref<string>('');
 
@@ -35,19 +37,23 @@ export const useLicenseStore = defineStore('license', () => {
   // Actions
   async function loadLicense() {
     isLoading.value = true;
+    isLoadingGates.value = true;
     try {
       const [licenseData, gatesData] = await Promise.all([
         window.electronAPI.getLicense(),
         window.electronAPI.getFeatureGates()
       ]);
       license.value = licenseData;
+      // Merge remote gates ON TOP of hardcoded gates (remote wins)
       if (gatesData && Object.keys(gatesData).length > 0) {
-        featureGates.value = gatesData;
+        featureGates.value = { ...FEATURE_GATES, ...gatesData };
       }
     } catch (error) {
       console.error('Failed to load license or gates:', error);
+      // On error, keep local hardcoded gates — still blocks pro features
     } finally {
       isLoading.value = false;
+      isLoadingGates.value = false;
     }
   }
 
@@ -80,11 +86,19 @@ export const useLicenseStore = defineStore('license', () => {
   }
 
   /**
-   * Check if a feature is available
+   * Check if a feature is available for the current license.
+   * Priority: remote gates (from Firestore) > local FEATURE_GATES defaults.
+   * If a feature is unknown in both, it defaults to FREE (open access).
    */
   function hasFeature(featureId: string): boolean {
-    const requiredTier = featureGates.value[featureId] || FEATURE_GATES[featureId];
-    if (!requiredTier || requiredTier === 'free') return true;
+    // Remote gates from Firestore take priority
+    const remoteTier = featureGates.value[featureId];
+    // Fallback to hardcoded defaults
+    const defaultTier = FEATURE_GATES[featureId];
+    // Use remote gate if available, else use hardcoded default, else 'free'
+    const requiredTier: LicenseTier = remoteTier || defaultTier || 'free';
+
+    if (requiredTier === 'free') return true;
 
     const tierLevel: Record<LicenseTier, number> = {
       'free': 0,
@@ -92,16 +106,19 @@ export const useLicenseStore = defineStore('license', () => {
       'team': 2,
     };
 
-    return tierLevel[license.value.tier] >= tierLevel[requiredTier];
+    const userLevel = tierLevel[license.value.tier] ?? 0;
+    const requiredLevel = tierLevel[requiredTier] ?? 0;
+
+    return userLevel >= requiredLevel;
   }
 
   /**
-   * Guard a feature - if not available, show upgrade dialog
-   * Returns true if feature is available
+   * Guard a feature — if blocked, show upgrade dialog.
+   * Returns true if feature is accessible.
    */
   function guardFeature(featureId: string): boolean {
     if (hasFeature(featureId)) return true;
-    
+
     upgradeFeature.value = featureId;
     showUpgradeDialog.value = true;
     return false;
@@ -112,6 +129,7 @@ export const useLicenseStore = defineStore('license', () => {
     license,
     featureGates,
     isLoading,
+    isLoadingGates,
     showUpgradeDialog,
     upgradeFeature,
 

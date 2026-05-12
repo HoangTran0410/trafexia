@@ -67,7 +67,9 @@ async function sendRequest() {
       life: 2000
     });
     
-    await window.electronAPI.composeRequest(request);
+    // Clone to plain object to avoid Proxy cloning issues in IPC
+    const plainRequest = JSON.parse(JSON.stringify(request));
+    await window.electronAPI.composeRequest(plainRequest);
     
     toast.add({
       severity: 'success',
