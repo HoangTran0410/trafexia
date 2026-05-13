@@ -203,7 +203,7 @@ export interface DetectedPinningHost {
   bypassed: boolean;
 }
 
-export type FridaArch = "arm64-v8a" | "x86_64";
+export type FridaArch = "arm64" | "arm" | "x86_64" | "x86";
 
 export type BypassFramework =
   | "auto"
@@ -247,6 +247,7 @@ export const IPC_CHANNELS = {
 
   // App
   APP_GET_LOCAL_IP: "app:get-local-ip",
+  APP_SELECT_FILE: "app:select-file",
 
   // Browser/Emulator
   LAUNCH_BROWSER: "app:launch-browser",
@@ -258,6 +259,8 @@ export const IPC_CHANNELS = {
   ANDROID_LAUNCH_AVD: "android:launch-avd",
   IOS_GET_DEVICES: "ios:get-devices",
   IOS_LAUNCH_DEVICE: "ios:launch-device",
+  ANDROID_INSTALL_APK: "android:install-apk",
+  ANDROID_INSTALL_MULTIPLE_APKS: "android:install-multiple-apks",
 
   // Request Replay & Composer
   REQUEST_REPLAY: "request:replay",
@@ -465,6 +468,7 @@ export interface IpcApi {
 
   // App
   getLocalIp: () => Promise<string>;
+  selectFile: (options?: { filters?: { name: string; extensions: string[] }[]; title?: string }) => Promise<string | null>;
 
   // Browser/Emulator
   launchBrowser: (browser: "chrome" | "firefox" | "edge") => Promise<boolean>;
@@ -474,6 +478,8 @@ export interface IpcApi {
   bridgeAndroidDevice: (deviceId: string) => Promise<boolean>;
   getAndroidAvds: () => Promise<string[]>;
   launchAndroidAvd: (name: string) => Promise<boolean>;
+  installApk: (deviceId: string, apkPath: string) => Promise<boolean>;
+  installMultipleApks: (deviceId: string, apkPaths: string[]) => Promise<boolean>;
   getIosDevices: () => Promise<IosDevice[]>;
   launchIosDevice: (udid: string) => Promise<boolean>;
 
@@ -499,14 +505,11 @@ export interface IpcApi {
 
   // SSL Bypass
   patchApk: (inputPath: string, outputPath: string) => Promise<PatchResult>;
-  injectGadget: (
-    apkPath: string,
-    arch: FridaArch,
-    outputPath: string,
-  ) => Promise<void>;
+  injectGadget: (apkPath: string, arch: FridaArch, outputPath: string) => Promise<string[]>;
   startFrida: (
     packageName: string,
     framework: BypassFramework,
+    deviceId?: string,
   ) => Promise<void>;
   stopFrida: () => Promise<void>;
   getDetectedHosts: () => Promise<DetectedPinningHost[]>;

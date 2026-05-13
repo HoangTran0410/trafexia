@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { Play, Square, Loader2, Smartphone, Globe, ShieldCheck } from 'lucide-vue-next';
+import { Play, Square, Loader2, Smartphone } from 'lucide-vue-next';
 import { useProxyStore } from '@/stores/proxyStore';
 import AndroidBridgeDialog from './AndroidBridgeDialog.vue';
 import IosBridgeDialog from './IosBridgeDialog.vue';

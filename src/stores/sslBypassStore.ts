@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { ref, computed } from "vue";
+import { ref, computed, shallowRef } from "vue";
 import type {
   DetectedPinningHost,
   FridaLogEntry,
@@ -16,9 +16,13 @@ export const useSslBypassStore = defineStore("sslBypass", () => {
   const currentPackage = ref("");
   const currentFramework = ref<BypassFramework>("all");
   const patchLog = ref<PatchResult | null>(null);
-  const fridaLogs = ref<FridaLogEntry[]>([]);
+  const fridaLogs = shallowRef<FridaLogEntry[]>([]);
   const isPatching = ref(false);
   const isInjecting = ref(false);
+
+  // Buffer for high-frequency log updates
+  let logBuffer: FridaLogEntry[] = [];
+  let updateTimer: any = null;
 
   // Getters
   const detectedCount = computed(() => detectedHosts.value.length);
@@ -53,24 +57,43 @@ export const useSslBypassStore = defineStore("sslBypass", () => {
     apkPath: string,
     arch: FridaArch,
     outputPath: string,
-  ): Promise<void> {
+  ): Promise<string[]> {
     isInjecting.value = true;
     try {
-      await window.electronAPI.injectGadget(apkPath, arch, outputPath);
+      return await window.electronAPI.injectGadget(apkPath, arch, outputPath);
     } finally {
       isInjecting.value = false;
+    }
+  }
+
+  async function installApk(deviceId: string, apkPath: string): Promise<boolean> {
+    try {
+      return await window.electronAPI.installApk(deviceId, apkPath);
+    } catch (error) {
+      console.error("Failed to install APK:", error);
+      return false;
+    }
+  }
+
+  async function installMultipleApks(deviceId: string, apkPaths: string[]): Promise<boolean> {
+    try {
+      return await window.electronAPI.installMultipleApks(deviceId, apkPaths);
+    } catch (error) {
+      console.error("Failed to install multiple APKs:", error);
+      return false;
     }
   }
 
   async function startFrida(
     packageName: string,
     framework: BypassFramework,
+    deviceId?: string,
   ): Promise<void> {
     try {
       currentPackage.value = packageName;
       currentFramework.value = framework;
       fridaLogs.value = [];
-      await window.electronAPI.startFrida(packageName, framework);
+      await window.electronAPI.startFrida(packageName, framework, deviceId);
       fridaRunning.value = true;
     } catch (error) {
       fridaRunning.value = false;
@@ -93,10 +116,16 @@ export const useSslBypassStore = defineStore("sslBypass", () => {
   }
 
   function addFridaLog(log: FridaLogEntry): void {
-    fridaLogs.value.push(log);
-    // Keep max 500 log entries
-    if (fridaLogs.value.length > 500) {
-      fridaLogs.value = fridaLogs.value.slice(-400);
+    logBuffer.push(log);
+    
+    if (!updateTimer) {
+      updateTimer = setTimeout(() => {
+        const newLogs = [...fridaLogs.value, ...logBuffer];
+        // Capped at 50 logs for absolute maximum performance
+        fridaLogs.value = newLogs.slice(-50);
+        logBuffer = [];
+        updateTimer = null;
+      }, 100); // 10 updates per second max
     }
   }
 
@@ -135,6 +164,8 @@ export const useSslBypassStore = defineStore("sslBypass", () => {
     // Actions
     patchApk,
     injectGadget,
+    installApk,
+    installMultipleApks,
     startFrida,
     stopFrida,
     refreshDetectedHosts,

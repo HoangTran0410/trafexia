@@ -1,13 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed } from 'vue';
 import { useTrafficStore } from '@/stores/trafficStore';
-import { useLicenseStore } from '@/stores/licenseStore';
 import { GitCompare, X, ArrowLeftRight, ChevronDown } from 'lucide-vue-next';
 import type { CapturedRequest } from '@shared/types';
 
 const emit = defineEmits<{ close: [] }>();
 const trafficStore = useTrafficStore();
-const licenseStore = useLicenseStore();
 
 const leftId = ref<number | null>(null);
 const rightId = ref<number | null>(null);

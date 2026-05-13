@@ -236,7 +236,7 @@ export async function patchAPK(
  * the <application> tag and inject the attribute reference. If the manifest
  * already has the attribute, we skip.
  */
-function patchManifestBinary(
+export function patchManifestBinary(
   zip: AdmZip,
   patchedItems: PatchedItem[],
   warnings: string[],
@@ -261,6 +261,43 @@ function patchManifestBinary(
       break;
     }
   }
+
+  // --- NEW: Neutralize isSplitRequired (UTF-16LE and UTF-8) ---
+  const neutralize = (target: string, replacement: string) => {
+    const target16 = Buffer.from(target, "utf-16le");
+    const replacement16 = Buffer.from(replacement, "utf-16le");
+    const target8 = Buffer.from(target, "utf-8");
+    const replacement8 = Buffer.from(replacement, "utf-8");
+    
+    let patched = false;
+    for (let i = 0; i < data.length - target16.length; i++) {
+      if (data.subarray(i, i + target16.length).equals(target16)) {
+        data.set(replacement16, i);
+        patched = true;
+      }
+    }
+    for (let i = 0; i < data.length - target8.length; i++) {
+      if (data.subarray(i, i + target8.length).equals(target8)) {
+        data.set(replacement8, i);
+        patched = true;
+      }
+    }
+    return patched;
+  };
+
+  const splitPatched = neutralize("isSplitRequired", "isSplitOptional");
+  const configPatched = neutralize("configForSplit", "configForNone"); // Also disable split config reference
+  const nativePatched = neutralize("extractNativeLibs", "extractNativeTrue"); // Force library extraction
+
+  if (splitPatched || configPatched || nativePatched) {
+    patchedItems.push({
+      type: "manifest",
+      file: "AndroidManifest.xml",
+      description: "Neutralized Split APK and Native Lib attributes (Bypassed installation restrictions)",
+    });
+    zip.updateFile("AndroidManifest.xml", data);
+  }
+  // ----------------------------------------
 
   if (hasNsc) {
     patchedItems.push({

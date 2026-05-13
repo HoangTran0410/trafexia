@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref } from 'vue';
 import { useLicenseStore } from '@/stores/licenseStore';
-import { X, Crown, Zap, Shield, Rocket, Check, Star, Mail, Key as KeyIcon, ArrowRight, Loader2, Info } from 'lucide-vue-next';
+import { X, Crown, Check, ArrowRight, Loader2, Mail, Key as KeyIcon } from 'lucide-vue-next';
 import { useToast } from 'primevue/usetoast';
 
 const licenseStore = useLicenseStore();

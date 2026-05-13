@@ -12,6 +12,7 @@ import { MapService } from './services/MapService';
 import { ThrottleService } from './services/ThrottleService';
 import { AndroidService } from './services/AndroidService';
 import { IosService } from './services/IosService';
+import { ApkSignerService } from './services/ApkSignerService';
 import { setupIpcHandlers } from './ipc-handlers';
 import { setupSslBypassIpc, cleanupFridaProcess } from '../ssl-bypass/ssl-bypass-ipc';
 import { getLocalIp } from './utils/network';
@@ -29,6 +30,7 @@ let mapService: MapService;
 let throttleService: ThrottleService;
 let androidService: AndroidService;
 let iosService: IosService;
+let apkSignerService: ApkSignerService;
 let mainWindow: BrowserWindow | null = null;
 
 // Disable hardware acceleration for better compatibility
@@ -118,6 +120,7 @@ const initializeServices = async () => {
   throttleService = new ThrottleService(trafficStorage);
   androidService = new AndroidService();
   iosService = new IosService();
+  apkSignerService = new ApkSignerService();
 
   // Load rules and initialize
   await mockService.loadRules();
@@ -142,11 +145,12 @@ const initializeServices = async () => {
     throttleService,
     androidService,
     iosService,
+    apkSignerService,
     mainWindow: () => mainWindow,
   });
 
   // Setup SSL bypass IPC handlers (with license enforcement)
-  setupSslBypassIpc(() => mainWindow, licenseService);
+  setupSslBypassIpc(() => mainWindow, licenseService, apkSignerService);
 
   console.log('[Main] Services initialized');
 };

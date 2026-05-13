@@ -54,7 +54,7 @@ export const useTrafficStore = defineStore('traffic', () => {
   watch(() => filter.value.searchQuery, (newVal) => {
     if (debounceTimeout) clearTimeout(debounceTimeout);
     debounceTimeout = setTimeout(() => {
-      debouncedSearchQuery.value = newVal;
+      debouncedSearchQuery.value = newVal || '';
     }, 300);
   });
 

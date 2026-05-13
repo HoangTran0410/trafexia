@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
-import { Gauge, Wifi, WifiOff, Zap, ChevronDown } from 'lucide-vue-next';
+import { Gauge, WifiOff } from 'lucide-vue-next';
 import { useToast } from 'primevue/usetoast';
 import { useLicenseStore } from '@/stores/licenseStore';
 import type { ThrottleProfile, ThrottlePreset } from '@shared/types';

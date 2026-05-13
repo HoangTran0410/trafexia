@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
-import { X, Plus, Trash2, Edit, Power, PowerOff, FileCode, Globe, FolderOpen } from 'lucide-vue-next';
+import { X, Plus, Trash2, Edit, Power, PowerOff, FileCode, Globe } from 'lucide-vue-next';
 import { useToast } from 'primevue/usetoast';
 import { useLicenseStore } from '@/stores/licenseStore';
 import type { MapRule } from '@shared/types';

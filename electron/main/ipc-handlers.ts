@@ -28,7 +28,9 @@ import type {
   MapRule,
   ThrottleProfile,
   LicenseInfo,
-  LicenseTier
+  LicenseTier,
+  AndroidDevice,
+  IosDevice
 } from '../../shared/types';
 import { IPC_CHANNELS, DEFAULT_SETTINGS } from '../../shared/types';
 import { getLocalIp } from './utils/network';
@@ -279,6 +281,20 @@ export function setupIpcHandlers(services: Services): void {
     return getLocalIp();
   });
 
+  ipcMain.handle(IPC_CHANNELS.APP_SELECT_FILE, async (_event, options?: { filters?: { name: string; extensions: string[] }[]; title?: string }): Promise<string | null> => {
+    const result = await dialog.showOpenDialog({
+      title: options?.title || 'Select File',
+      filters: options?.filters,
+      properties: ['openFile']
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+
+    return result.filePaths[0];
+  });
+
   // ===== Browser/Emulator =====
 
   ipcMain.handle(IPC_CHANNELS.LAUNCH_BROWSER, async (_event, browser: 'chrome' | 'firefox' | 'edge'): Promise<boolean> => {
@@ -460,6 +476,24 @@ export function setupIpcHandlers(services: Services): void {
       return await androidService.launchAvd(name);
     } catch (error) {
       console.error('[IPC] Failed to launch Android AVD:', error);
+      throw error;
+    }
+  });
+  
+  ipcMain.handle(IPC_CHANNELS.ANDROID_INSTALL_APK, async (_event, deviceId: string, apkPath: string): Promise<boolean> => {
+    try {
+      return await androidService.installApk(deviceId, apkPath);
+    } catch (error) {
+      console.error('[IPC] Failed to install APK:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.ANDROID_INSTALL_MULTIPLE_APKS, async (_event, deviceId: string, apkPaths: string[]): Promise<boolean> => {
+    try {
+      return await androidService.installMultipleApks(deviceId, apkPaths);
+    } catch (error) {
+      console.error('[IPC] Failed to install multiple APKs:', error);
       throw error;
     }
   });

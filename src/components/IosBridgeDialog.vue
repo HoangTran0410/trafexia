@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { Smartphone, RefreshCw, Monitor, Play, Apple } from 'lucide-vue-next';
+import { Smartphone, RefreshCw, Play, Apple } from 'lucide-vue-next';
 import type { IosDevice } from '@shared/types';
 import { useToast } from 'primevue/usetoast';
 
-const props = defineEmits<{
+defineEmits<{
   close: [];
 }>();
 

@@ -12,6 +12,7 @@ import * as path from "path";
 import * as fs from "fs";
 import * as https from "https";
 import AdmZip from "adm-zip";
+import { patchManifestBinary } from "./apk-patcher";
 import type { FridaArch } from "../../shared/types";
 
 /** Default Frida version to download */
@@ -37,8 +38,10 @@ const GADGET_CONFIG = JSON.stringify(
  */
 function getGadgetFilename(arch: FridaArch, version: string): string {
   const archMap: Record<FridaArch, string> = {
-    "arm64-v8a": `frida-gadget-${version}-android-arm64.so`,
+    arm64: `frida-gadget-${version}-android-arm64.so`,
+    arm: `frida-gadget-${version}-android-arm.so`,
     x86_64: `frida-gadget-${version}-android-x86_64.so`,
+    x86: `frida-gadget-${version}-android-x86.so`,
   };
   return archMap[arch];
 }
@@ -138,8 +141,8 @@ async function getGadget(
   cacheDir: string,
   version: string = DEFAULT_FRIDA_VERSION,
 ): Promise<string> {
-  const gadgetFilename = `frida-gadget-${version}-android-${arch === "arm64-v8a" ? "arm64" : "x86_64"}.so`;
-  const cachedPath = path.join(cacheDir, gadgetFilename);
+  const filename = getGadgetFilename(arch, version);
+  const cachedPath = path.join(cacheDir, filename);
 
   if (fs.existsSync(cachedPath)) {
     console.log(`[FridaInjector] Using cached gadget: ${cachedPath}`);
@@ -201,7 +204,13 @@ export async function injectGadget(
   const zip = new AdmZip(apkPath);
 
   // Add gadget .so to the native libs directory
-  const libDir = arch === "arm64-v8a" ? "lib/arm64-v8a" : "lib/x86_64";
+  const archToDir: Record<FridaArch, string> = {
+    arm64: "lib/arm64-v8a",
+    arm: "lib/armeabi-v7a",
+    x86_64: "lib/x86_64",
+    x86: "lib/x86",
+  };
+  const libDir = archToDir[arch];
   zip.addFile(`${libDir}/libfrida-gadget.so`, gadgetData);
   console.log(`[FridaInjector] Added libfrida-gadget.so to ${libDir}/`);
 
@@ -213,6 +222,7 @@ export async function injectGadget(
   console.log("[FridaInjector] Added frida-gadget.config.json to assets/");
 
   // Step 4: Patch Application class smali
+  patchManifestBinary(zip, [], []);
   const smaliPatched = patchApplicationSmali(zip);
   if (!smaliPatched) {
     console.log(

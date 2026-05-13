@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { Smartphone, RefreshCw, ShieldCheck, ShieldAlert, Cpu, Monitor, CheckCircle2, Play } from 'lucide-vue-next';
+import { Smartphone, RefreshCw, ShieldCheck, ShieldAlert, Monitor, CheckCircle2, Play } from 'lucide-vue-next';
 import type { AndroidDevice } from '@shared/types';
 import { useToast } from 'primevue/usetoast';
 
-const props = defineEmits<{
+const emit = defineEmits<{
   close: [];
 }>();
 
@@ -74,7 +74,7 @@ async function bridgeToDevice(device: AndroidDevice) {
         detail: `Successfully bridged to ${device.model}`,
         life: 3000
       });
-      props('close');
+      emit('close');
     } else {
       throw new Error('Failed to bridge');
     }

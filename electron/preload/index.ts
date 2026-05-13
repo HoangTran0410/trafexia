@@ -20,7 +20,9 @@ import type {
   FridaArch,
   BypassFramework,
   FridaLogEntry,
-  DetectedPinningHost
+  DetectedPinningHost,
+  AndroidDevice,
+  IosDevice
 } from '../../shared/types';
 import { IPC_CHANNELS } from '../../shared/types';
 
@@ -75,9 +77,8 @@ const api: IpcApi = {
   },
 
   // App
-  getLocalIp: (): Promise<string> => {
-    return ipcRenderer.invoke(IPC_CHANNELS.APP_GET_LOCAL_IP);
-  },
+  getLocalIp: () => ipcRenderer.invoke(IPC_CHANNELS.APP_GET_LOCAL_IP),
+  selectFile: (options) => ipcRenderer.invoke(IPC_CHANNELS.APP_SELECT_FILE, options),
 
   // Browser/Emulator
   launchBrowser: (browser: 'chrome' | 'firefox' | 'edge'): Promise<boolean> => {
@@ -100,6 +101,12 @@ const api: IpcApi = {
   },
   launchAndroidAvd: (name: string): Promise<boolean> => {
     return ipcRenderer.invoke(IPC_CHANNELS.ANDROID_LAUNCH_AVD, name);
+  },
+  installApk: (deviceId: string, apkPath: string): Promise<boolean> => {
+    return ipcRenderer.invoke(IPC_CHANNELS.ANDROID_INSTALL_APK, deviceId, apkPath);
+  },
+  installMultipleApks: (deviceId: string, apkPaths: string[]): Promise<boolean> => {
+    return ipcRenderer.invoke(IPC_CHANNELS.ANDROID_INSTALL_MULTIPLE_APKS, deviceId, apkPaths);
   },
   getIosDevices: (): Promise<IosDevice[]> => {
     return ipcRenderer.invoke(IPC_CHANNELS.IOS_GET_DEVICES);
@@ -154,9 +161,8 @@ const api: IpcApi = {
   injectGadget: (apkPath: string, arch: FridaArch, outputPath: string): Promise<void> => {
     return ipcRenderer.invoke(IPC_CHANNELS.SSL_BYPASS_INJECT_GADGET, apkPath, arch, outputPath);
   },
-  startFrida: (packageName: string, framework: BypassFramework): Promise<void> => {
-    return ipcRenderer.invoke(IPC_CHANNELS.SSL_BYPASS_START_FRIDA, packageName, framework);
-  },
+  startFrida: (packageName, framework, deviceId) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SSL_BYPASS_START_FRIDA, packageName, framework, deviceId),
   stopFrida: (): Promise<void> => {
     return ipcRenderer.invoke(IPC_CHANNELS.SSL_BYPASS_STOP_FRIDA);
   },

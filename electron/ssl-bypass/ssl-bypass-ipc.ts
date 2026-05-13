@@ -12,8 +12,11 @@ import * as path from "path";
 import { patchAPK } from "./apk-patcher";
 import { injectGadget } from "./frida-injector";
 import { getBypassScript } from "./bypass-scripts";
+import * as fs from "fs";
+import AdmZip from "adm-zip";
 import { SslBypassRule } from "./ssl-bypass-rule";
 import type { LicenseService } from "../main/services/LicenseService";
+import type { ApkSignerService } from "../main/services/ApkSignerService";
 import { IPC_CHANNELS } from "../../shared/types";
 import type {
   FridaArch,
@@ -33,6 +36,7 @@ let sslBypassRule: SslBypassRule | null = null;
 export function setupSslBypassIpc(
   mainWindow: () => BrowserWindow | null,
   licenseService?: LicenseService,
+  apkSignerService?: ApkSignerService,
 ): SslBypassRule {
   sslBypassRule = new SslBypassRule();
 
@@ -50,6 +54,9 @@ export function setupSslBypassIpc(
         requireSslBypass();
         console.log(`[SSL-Bypass-IPC] Patching APK: ${inputPath}`);
         const result = await patchAPK(inputPath, outputPath);
+        if (result.success && apkSignerService) {
+          await apkSignerService.signApk(outputPath);
+        }
         return result;
       } catch (error) {
         console.error("[SSL-Bypass-IPC] Failed to patch APK:", error);
@@ -61,11 +68,59 @@ export function setupSslBypassIpc(
   // === Inject Frida Gadget ===
   ipcMain.handle(
     IPC_CHANNELS.SSL_BYPASS_INJECT_GADGET,
-    async (_event, apkPath: string, arch: FridaArch, outputPath: string) => {
+    async (_event, apkPath: string, arch: FridaArch, outputPath: string): Promise<string[]> => {
       try {
         requireSslBypass();
         const cacheDir = path.join(app.getPath("userData"), "frida-gadgets");
-        await injectGadget(apkPath, arch, outputPath, cacheDir);
+        const ext = path.extname(apkPath).toLowerCase();
+
+        if (ext === ".xapk" || ext === ".zip") {
+          console.log(`[SSL-Bypass-IPC] Processing XAPK/Bundle: ${apkPath}`);
+          const tempDir = path.join(path.dirname(outputPath), "xapk_temp_" + Date.now());
+          if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+
+          const zip = new AdmZip(apkPath);
+          zip.extractAllTo(tempDir, true);
+
+          // Find all APKs
+          const allFiles = fs.readdirSync(tempDir);
+          const apkFiles = allFiles.filter(f => f.endsWith(".apk")).map(f => path.join(tempDir, f));
+          
+          if (apkFiles.length === 0) throw new Error("No APKs found inside XAPK/Bundle");
+
+          // Find base APK (prefer 'base.apk' or files with 'base' in name, fallback to largest)
+          let baseApk = apkFiles.find(f => path.basename(f).toLowerCase().includes('base')) || 
+                        apkFiles.reduce((prev, current) => {
+                          return fs.statSync(current).size > fs.statSync(prev).size ? current : prev;
+                        });
+
+          console.log(`[SSL-Bypass-IPC] Files in XAPK: ${apkFiles.map(f => path.basename(f)).join(', ')}`);
+          console.log(`[SSL-Bypass-IPC] Identified base APK for injection: ${path.basename(baseApk)}`);
+          
+          // Inject Gadget into base
+          const injectedBase = outputPath; // Use the requested output path for the base
+          await injectGadget(baseApk, arch, injectedBase, cacheDir);
+          
+          // Return all APKs (injected base + original splits)
+          const finalApks = [injectedBase, ...apkFiles.filter(f => f !== baseApk)];
+          
+          // CRITICAL: All APKs in a multiple-install session MUST have the same signature
+          if (apkSignerService) {
+            console.log(`[SSL-Bypass-IPC] Batch signing ${finalApks.length} APKs...`);
+            for (const apk of finalApks) {
+              await apkSignerService.signApk(apk);
+            }
+          }
+
+          return finalApks;
+        } else {
+          // Normal single APK
+          await injectGadget(apkPath, arch, outputPath, cacheDir);
+          if (apkSignerService) {
+            await apkSignerService.signApk(outputPath);
+          }
+          return [outputPath];
+        }
       } catch (error) {
         console.error("[SSL-Bypass-IPC] Failed to inject gadget:", error);
         throw error;
@@ -76,11 +131,15 @@ export function setupSslBypassIpc(
   // === Start Frida ===
   ipcMain.handle(
     IPC_CHANNELS.SSL_BYPASS_START_FRIDA,
-    async (_event, packageName: string, framework: BypassFramework) => {
+    async (_event, packageName: string, framework: BypassFramework, deviceId?: string) => {
       try {
         requireSslBypass();
         if (fridaProcess) {
-          throw new Error("Frida is already running. Stop it first.");
+          console.log("[SSL-Bypass-IPC] Stopping existing Frida process...");
+          try {
+            fridaProcess.kill();
+          } catch (e) {}
+          fridaProcess = null;
         }
 
         const script = getBypassScript(framework);
@@ -92,7 +151,7 @@ export function setupSslBypassIpc(
         fs.writeFileSync(scriptPath, script, "utf-8");
 
         console.log(
-          `[SSL-Bypass-IPC] Starting Frida for ${packageName} with ${framework} bypass`,
+          `[SSL-Bypass-IPC] Starting Frida for ${packageName} with ${framework} bypass on device ${deviceId || 'default USB'}`,
         );
 
         // Resolve frida binary path
@@ -101,54 +160,73 @@ export function setupSslBypassIpc(
 
         // Spawn frida process
         // frida -U -f <package> -l <script>
-        fridaProcess = spawn(
-          fridaPath,
-          [
-            "-U", // USB device
-            "-f",
-            packageName, // Spawn app
-            "-l",
-            scriptPath, // Load script
-          ],
-          {
-            stdio: ["pipe", "pipe", "pipe"],
-          },
-        );
+        // Use -W (await) to wait for the app to start manually.
+        // This is much more stable than -f (spawn) which often hangs.
+        const args = [
+          "-W",
+          packageName, // Await this package
+          "-l",
+          scriptPath, // Load script
+        ];
 
-        const win = mainWindow();
+        if (deviceId) {
+          args.unshift("-D", deviceId);
+        } else {
+          args.unshift("-U"); // Default to USB
+        }
 
-        const sendLog = (level: FridaLogEntry["level"], message: string) => {
-          const log: FridaLogEntry = {
-            timestamp: Date.now(),
-            level,
-            message: message.trim(),
-          };
-          if (win && !win.isDestroyed()) {
-            win.webContents.send(IPC_CHANNELS.SSL_BYPASS_FRIDA_LOG, log);
+        fridaProcess = spawn(fridaPath, args, {
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+
+        const sendLog = (log: FridaLogEntry) => {
+          const currentWin = mainWindow();
+          if (currentWin && !currentWin.isDestroyed()) {
+            currentWin.webContents.send(IPC_CHANNELS.SSL_BYPASS_FRIDA_LOG, log);
           }
         };
 
-        fridaProcess.stdout?.on("data", (data: Buffer) => {
-          const text = data.toString("utf-8");
-          // Parse Frida output for log levels
-          const lines = text.split("\n").filter((l) => l.trim());
-          for (const line of lines) {
-            if (line.includes("[+]")) {
-              sendLog("success", line);
-            } else if (line.includes("[-]")) {
-              sendLog("error", line);
-            } else if (line.includes("[!]") || line.includes("[*]")) {
-              sendLog("warning", line);
-            } else {
-              sendLog("info", line);
+        const currentProcess = fridaProcess;
+
+        currentProcess.stdout?.on("data", (data: Buffer) => {
+          const message = data.toString().trim();
+          if (message) {
+            // Log to terminal for easier debugging
+            console.log(`[Frida Stdout] ${message}`);
+            
+            sendLog({
+              timestamp: Date.now(),
+              message,
+              level: "info",
+            });
+
+            // Auto-resume if Frida is waiting at the spawn point
+            if (message.includes("Spawning") || message.includes("Resume with") || message.includes("Waiting for spawn")) {
+              currentProcess.stdin?.write("%resume\n");
+              currentProcess.stdin?.write("resume\n");
             }
           }
         });
 
+        // Safety timeout: try to resume after 2 seconds regardless of logs
+        setTimeout(() => {
+          if (currentProcess && !currentProcess.killed) {
+            currentProcess.stdin?.write("%resume\n");
+            currentProcess.stdin?.write("resume\n");
+          }
+        }, 2000);
+
         fridaProcess.stderr?.on("data", (data: Buffer) => {
           const text = data.toString("utf-8").trim();
           if (text) {
-            sendLog("error", text);
+            // Log to terminal for easier debugging
+            console.error(`[Frida Stderr] ${text}`);
+            
+            sendLog({
+              timestamp: Date.now(),
+              message: text,
+              level: "error",
+            });
           }
         });
 
@@ -156,15 +234,20 @@ export function setupSslBypassIpc(
           const message = err.message.includes("ENOENT")
             ? `frida command not found at '${fridaPath}'. Install it with: pip install frida-tools`
             : err.message;
-          sendLog("error", `[Frida Process Error] ${message}`);
+          sendLog({
+            timestamp: Date.now(),
+            message: `[Frida Process Error] ${message}`,
+            level: "error",
+          });
           fridaProcess = null;
         });
 
         fridaProcess.on("close", (code) => {
-          sendLog(
-            "info",
-            `[Frida Process] Exited with code ${code ?? "unknown"}`,
-          );
+          sendLog({
+            timestamp: Date.now(),
+            message: `[Frida Process] Exited with code ${code ?? "unknown"}`,
+            level: code === 0 ? "info" : "error",
+          });
           fridaProcess = null;
         });
 

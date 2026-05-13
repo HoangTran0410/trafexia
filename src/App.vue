@@ -63,7 +63,6 @@ const viewMode = ref<"list" | "timeline">("list");
 
 // Computed
 const hasSelectedRequest = computed(() => !!trafficStore.selectedRequest);
-const requestCount = computed(() => trafficStore.filteredRequests.length);
 
 // Event handlers
 function handleRequestCaptured(request: any) {
