@@ -24,7 +24,7 @@ jobs:
         include:
           - os: macos-latest
             platform: mac
-            build_cmd: yarn build:mac-arm
+            build_cmd: yarn build:mac
 
           - os: windows-latest
             platform: win
@@ -76,8 +76,7 @@ jobs:
         run: yarn install --frozen-lockfile
 
       - name: Rebuild native modules
-        run: |
-          yarn rebuild || npx electron-rebuild -f
+        run: npx electron-builder install-app-deps
         continue-on-error: true
 
       - name: Typecheck
