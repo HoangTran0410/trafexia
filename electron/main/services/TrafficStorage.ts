@@ -114,6 +114,16 @@ export class TrafficStorage {
   }
 
   /**
+   * Update request body for a request (used for late body arrival)
+   */
+  updateRequestBody(id: number, body: string | null): void {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const stmt = this.db.prepare('UPDATE requests SET request_body = ? WHERE id = ?');
+    stmt.run(body, id);
+  }
+
+  /**
    * Update response data for a request
    */
   updateResponse(id: number, data: {

@@ -202,6 +202,26 @@ export class ProxyServer extends EventEmitter {
     // Remove proxy-specific headers
     delete (options.headers as Record<string, unknown>)['proxy-connection'];
 
+    // NEW: Save and emit request immediately for real-time visibility
+    const capturedRequest: Omit<CapturedRequest, 'id'> = {
+      timestamp: startTime,
+      method: clientReq.method || 'GET',
+      url: requestUrl,
+      host: parsedUrl.hostname,
+      path: parsedUrl.pathname + parsedUrl.search,
+      status: 0,
+      requestHeaders: this.headersToRecord(clientReq.headers),
+      requestBody: null,
+      responseHeaders: {},
+      responseBody: null,
+      contentType: '',
+      duration: 0,
+      size: 0,
+    };
+
+    const requestId = this.storage.saveRequest(capturedRequest);
+    this.emit('request', { ...capturedRequest, id: requestId });
+
     // Capture request with size limit to maintain smoothness
     const requestBody: Buffer[] = [];
     let requestSize = 0;
@@ -341,25 +361,10 @@ export class ProxyServer extends EventEmitter {
         }
       }
 
-      // Save request to database
-      const capturedRequest: Omit<CapturedRequest, 'id'> = {
-        timestamp: startTime,
-        method: clientReq.method || 'GET',
-        url: requestUrl,
-        host: parsedUrl.hostname,
-        path: parsedUrl.pathname + parsedUrl.search,
-        status: 0,
-        requestHeaders: this.headersToRecord(clientReq.headers),
-        requestBody: reqBodyStr || null,
-        responseHeaders: {},
-        responseBody: null,
-        contentType: '',
-        duration: 0,
-        size: 0,
-      };
-
-      const requestId = this.storage.saveRequest(capturedRequest);
-      this.emit('request', { ...capturedRequest, id: requestId });
+      // Update request body if it was captured
+      if (requestSize > 0) {
+        this.storage.updateRequestBody(requestId, reqBodyStr);
+      }
 
       // Make proxy request
       const proxyReq = http.request(options, (proxyRes) => {
@@ -522,7 +527,11 @@ export class ProxyServer extends EventEmitter {
         'bad decrypt',
         'CERTIFICATE_UNKNOWN', // Client rejected our cert
         'UNKNOWN_CA',          // Client doesn't know our CA
-        'BAD_CERTIFICATE'      // Client found something wrong with the cert
+        'BAD_CERTIFICATE',      // Client found something wrong with the cert
+        'Request timeout',       // Client took too long or closed connection during handshake
+        'BAD_PACKET_LENGTH',     // Common with HTTP/2 or protocol mismatch
+        'DECRYPTION_FAILED_OR_BAD_RECORD_MAC',
+        'WRONG_VERSION_NUMBER'   // Client tried to use non-TLS or wrong version
       ];
       if (!suppressedErrors.some(e => msg.includes(e))) {
         console.error('[ProxyServer] TLS error:', msg);
@@ -580,6 +589,26 @@ export class ProxyServer extends EventEmitter {
       else if (Array.isArray(value)) reqHeaders[key] = value.join(', ');
     }
     delete reqHeaders['proxy-connection'];
+
+    // NEW: Save and emit request immediately for real-time visibility
+    const initialCapturedRequest: Omit<CapturedRequest, 'id'> = {
+      timestamp: startTime,
+      method,
+      url: fullUrl,
+      host: hostname,
+      path: reqPath,
+      status: 0,
+      requestHeaders: reqHeaders,
+      requestBody: null,
+      responseHeaders: {},
+      responseBody: null,
+      contentType: '',
+      duration: 0,
+      size: 0,
+    };
+
+    const requestId = this.storage.saveRequest(initialCapturedRequest);
+    this.emit('request', { ...initialCapturedRequest, id: requestId });
 
     // Collect request body
     const requestBody: Buffer[] = [];
@@ -678,14 +707,10 @@ export class ProxyServer extends EventEmitter {
         }
       }
 
-      // Save request
-      const capturedRequest: Omit<CapturedRequest, 'id'> = {
-        timestamp: startTime, method, url: fullUrl, host: hostname, path: reqPath,
-        status: 0, requestHeaders: reqHeaders, requestBody: bodyStr,
-        responseHeaders: {}, responseBody: null, contentType: '', duration: 0, size: 0,
-      };
-      const requestId = this.storage.saveRequest(capturedRequest);
-      this.emit('request', { ...capturedRequest, id: requestId });
+      // Update request body if it was captured
+      if (requestSize > 0) {
+        this.storage.updateRequestBody(requestId, bodyStr);
+      }
 
       // Forward to target
       const options: https.RequestOptions = {

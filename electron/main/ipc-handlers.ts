@@ -103,10 +103,10 @@ export function setupIpcHandlers(services: Services): void {
       const handleCapturedRequest = (request: CapturedRequest) => {
         requestBuffer.push(request);
         
-        if (requestBuffer.length >= 50) {
+        if (requestBuffer.length >= 20) {
           sendBatch();
         } else if (!batchTimeout) {
-          batchTimeout = setTimeout(sendBatch, 50); // Faster batching for better UX
+          batchTimeout = setTimeout(sendBatch, 20); // Even faster batching for 60fps-like responsiveness
         }
       };
 

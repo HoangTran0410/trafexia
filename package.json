@@ -13,7 +13,7 @@
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit",
     "lint": "eslint . --ext .vue,.ts,.tsx --fix",
-    "postinstall": "electron-builder install-app-deps"
+    "postinstall": "electron-builder install-app-deps && electron-rebuild -f -w better-sqlite3"
   },
   "keywords": [
     "trafexia",
