@@ -325,11 +325,11 @@ npm run build
 
 ## 💖 Support & Donations
 
-If you find Trafexia helpful for your development and reverse engineering work, consider supporting the project:
+If you find Trafexia helpful for your development, reverse engineering, or security testing work, consider supporting its creator! ☕
 
-<a href="https://buymeacoffee.com/huypc9294" target="_blank">
-  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 50px !important;width: 180px !important;" />
-</a>
+| 🌍 International Support | 🇻🇳 MoMo QR (Vietnam) | 🇻🇳 Bank Transfer / VietQR (Vietnam) |
+| :---: | :---: | :---: |
+| [![Buy Me A Coffee](https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png)](https://buymeacoffee.com/huypc9294) | ![MoMo QR](https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=https%3A%2F%2Fnhantien.momo.vn%2F0357658852) <br> Phone: **0357658852** | ![VietQR MB](https://img.vietqr.io/image/MB-09999838622222-compact.png?amount=100000&addInfo=TRAFEXIA%20COFFEE%20DONATION&accountName=DANG%20QUOC%20HUY) <br> MB Bank: **09999838622222** <br> Name: **DANG QUOC HUY** |
 
 ---
 
